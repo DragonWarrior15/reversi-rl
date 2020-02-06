@@ -9,5 +9,9 @@ p1 = RandomPlayer(board_size=board_size)
 p2 = RandomPlayer(board_size=board_size)
 g = Game(player1=p1, player2=p2, board_size=board_size)
 
+# g.reset()
+# g.play()
+
 # record and save game
-g.record_gameplay('images/gameplay_random_0.mp4')
+for i in range(5):
+    g.record_gameplay('images/gameplay_random_{:d}.mp4'.format(i))

@@ -229,6 +229,10 @@ class StateEnv:
                                     i += 1
                                     n_row, n_col = row+i*del_row, col+i*del_col
                                     if(self._check_legal_index(n_row, n_col)):
+                                        # if this cell is blank, break
+                                        if(s[n_row, n_col, :2].sum() == 0):
+                                            break
+                                        # if current player cell encountered again
                                         if(s[n_row, n_col, current_player] == 1):
                                             found = True
                                             break
@@ -348,6 +352,13 @@ class Game:
             the file name where to save the mp4/gif
         """
         frames_dir = 'temp_frames'
+        # color transition from black to white
+        transition_color_list = ['forestgreen', 'black', 'dimgray', 'dimgrey', 'gray', 'grey',
+                                 'darkgray', 'darkgrey', 'silver', 'lightgray', 
+                                 'lightgrey', 'gainsboro', 'whitesmoke', 'white']
+        frames_per_anim = len(transition_color_list) - 1
+        color_array = np.zeros((self._size, self._size), np.uint8)
+        alpha_array = np.zeros((self._size, self._size), np.uint8)
         # reset the game
         self.reset()
         # play a full game
@@ -373,7 +384,8 @@ class Game:
         # plt x axis runs left to right while y runs bottom to top
         # create the full template for the board here, then just change colors
         # in the loop
-        fig, axs = plt.subplots(1, 1, figsize=(13, 13), dpi=72)
+        fig, axs = plt.subplots(1, 1, figsize=(8, 8), dpi=72)
+        axs.axis('off')
         # add scatter points
         # axs.scatter([0, 1, 0, 1], [0, 1, 1, 0])
         ellipse_patch_list = []
@@ -394,6 +406,11 @@ class Game:
                          color='forestgreen')
         axs.add_patch(rect)
         # add circle patches
+        s = self._hist[0][0]
+        # determine the color and alpha values
+        color_array[s[:,:,0] == 1] = transition_color_list.index('black')
+        color_array[s[:,:,1] == 1] = transition_color_list.index('white')
+        alpha_array = (color_array != 0).astype(np.uint8)
         for i in range(self._size):
             for j in range(self._size):
                 # i moves along y axis while j along x
@@ -403,52 +420,66 @@ class Game:
                 ellipse = Ellipse(cell_centre,
                                   width=((cell_height - delta)),
                                   height=((cell_height - delta)),
-                                  angle=135,
-                                  color='forestgreen', alpha=0)
+                                  angle=0,
+                                  color=transition_color_list[color_array[i][j]], 
+                                  alpha=alpha_array[i][j])
                 ellipse_patch_list[i][j] = ellipse
+                # add to the figure
                 axs.add_patch(ellipse_patch_list[i][j])
-        ######## End Template Creation ########
-        # iterate over the game frames
+        # save first figure with some persistence
         fig_file_idx = 0
-        # iterate over the frames, for every frame, add 10 copies
-        # to add some persistence while viewing the video/gif
+        for idx in range(frames_per_anim):
+            if(idx == 0):
+                fig.savefig('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx), 
+                                                        bbox_inches='tight')
+            else:
+                shutil.copyfile('{:s}/img_{:05d}.png'.format(frames_dir, 0),
+                                '{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx))
+            fig_file_idx += 1
+        ######## End Template Creation ########
+        # iterate over the game frames with animation
         for idx in tqdm(range(len(self._hist))):
             # clear figure
             # plt.cla()
             # get the board from history
             s = self._hist[idx][0]
+            next_s = self._hist[idx][4]
             # prepare a single frame
-            for i in range(self._size):
-                for j in range(self._size):
-                    # i moves along y axis while j along x
-                    # a circle will be placed where a coin is
-                    # reset first
-                    if(s[i, j, 0] == 1):
-                        color = 'black'
-                        alpha = 1
-                    elif(s[i, j, 1] == 1):
-                        color = 'white'
-                        alpha = 1
-                    else:
-                        color = 'forestgreen'
-                        alpha = 0
-                    ellipse_patch_list[i][j].set_color(color)
-                    ellipse_patch_list[i][j].set_alpha(alpha)
-                    # axs.scatter(5, 5)
-            # figure is prepared, save in temp frames directory
-            # add a 10 frame transition with coins flipping
-            fig.savefig('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx), 
-                        bbox_inches='tight')
-            fig_file_start_idx = fig_file_idx
-            fig_file_idx += 1
-            if(1):
-                # copy the same file as nothing to animate
-                for _ in range(10):
-                    shutil.copyfile('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_start_idx),
-                                    '{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx))
-                    fig_file_idx += 1
+            for t in range(frames_per_anim):
+                # determine the color and alpha values
+                # color change from black to white
+                color_array[s[:,:,0] * next_s[:,:,1] == 1] = t + 1
+                # color change from white to black
+                color_array[s[:,:,1] * next_s[:,:,0] == 1] = frames_per_anim - t
+                # no coin now and then
+                color_array[s[:,:,:2].sum(2) + next_s[:,:,:2].sum(2) == 0] = 0
+                # new coin placed
+                color_array[(s[:,:,:2].sum(2) == 0) & (next_s[:,:,0] == 1)] = 1
+                color_array[(s[:,:,:2].sum(2) == 0) & (next_s[:,:,1] == 1)] = \
+                                        len(transition_color_list)-1
+                # set alpha array
+                alpha_array = (color_array != 0).astype(np.uint8)
+                for i in range(self._size):
+                    for j in range(self._size):
+                        # i moves along y axis while j along x
+                        # a circle will be placed where a coin is
+                        ellipse_patch_list[i][j].set_color(
+                                        transition_color_list[color_array[i][j]])
+                        ellipse_patch_list[i][j].set_alpha(alpha_array[i][j])
+                        # axs.scatter(5, 5)
+                # figure is prepared, save in temp frames directory
+                fig.savefig('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx), 
+                            bbox_inches='tight')
+                fig_file_idx += 1
+            # add some persistence before placing another new coin
+            fig_file_copy_idx = fig_file_idx - 1
+            for _ in range(frames_per_anim//2):
+                shutil.copyfile('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_copy_idx),
+                '{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx))
+                fig_file_idx += 1
                 
         # all frames have been saved, use ffmpeg to convert to movie
-        os.system('ffmpeg -y -framerate 10 -pattern_type sequence -i "{:s}/img_%05d.png" \
-          -c:v libx264 -r 10 -pix_fmt yuv420p {:s}'\
-          .format(frames_dir, path))
+        # output frame rate is different to add some persistence
+        os.system('ffmpeg -y -framerate {:d} -pattern_type sequence -i "{:s}/img_%05d.png" \
+          -c:v libx264 -r {:d} -pix_fmt yuv420p -vf "crop=floor(iw/2)*2:floor(ih/2)*2" {:s}'\
+          .format(int(1.5 * frames_per_anim), frames_dir, int(1.5 * frames_per_anim), path))
