@@ -4,8 +4,12 @@ and the class to play the game between two players
 
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Ellipse
+import shutil
+from tqdm import tqdm
 
-class state_env:
+class StateEnv:
     """Base class that implements all the rules of the game
     and also provides the public functions that an agent can
     use to play the game. For determining which player will play,
@@ -43,6 +47,8 @@ class state_env:
             0th index, white at 1st index and current player at 2nd index
         legal_moves : Ndarray
             masked array denoting the legal positions
+        current_player : int
+            the integer denoting which player plays
         """
         starter_board = np.zeros((self._size, self._size, 3), 
                                        dtype=np.uint8)
@@ -59,7 +65,7 @@ class state_env:
         # get legal moves
         legal_moves, s = self._legal_moves_helper(starter_board)
         
-        return s, legal_moves
+        return s, legal_moves, 1
 
     def step(self, s, a):
         """Play a move on the board at the given action location
@@ -76,15 +82,43 @@ class state_env:
         -------
         s_next : Ndarray
             updated board
-        legal_moves : legal_moves for the next player
+        legal_moves : Ndarray
+            legal_moves for the next player
+        current_player : int
+            whether 1 to play next or 0
+        done : int
+            1 if the game terminates, else 0
         """
+        # variable to track if the game has ended
+        # rewards will be determined by the game class
+        done = 0
         _, s_next = self._legal_moves_helper(s, 
                            action_row=a//self._size, action_col=a%self._size, play=True)
+        # change the player before checking for legal moves
+        s_next[:,:,2] = abs(s[0,0,2]-1)
         legal_moves, s_next = self._legal_moves_helper(s_next)
+        # check if legal moves are available
+        if(legal_moves.sum() == 0):
+            # either the current player cannot play, or the game has ended
+            if(s_next[:,:,:2].sum() == self._size**2):
+                # game has ended
+                done = 1
+            else:
+                # current player cannot play, switch player
+                s_next[:,:,2] = s[0,0,2]
+                # check for legal moves again
+                legal_moves, _ = self._legal_moves_helper(s_next)
+                if(legal_moves.sum() == 0):
+                    # no moves are possible, game is over
+                    done = 1
+                else:
+                    # original player will play next and opposite player
+                    # will pass the turn, nothing to modify
+                    pass
         # return
-        return s_next, legal_moves
+        return s_next, legal_moves, int(s_next[0, 0, 2]), done
 
-    def print(self, s):
+    def print(self, s, legal_moves=None):
         """Pretty prints the current board
 
         Arguments
@@ -92,8 +126,27 @@ class state_env:
         s : Ndarray
             current board state
         """
+        print(('black 0 ' if s[0,0,2]==0 else 'white 1 ') + 'to play')
         s_print = s[:,:,0] * 10 + s[:,:,1]
         print(s_print)
+        if(legal_moves is not None):
+            print(legal_moves * np.arange(self._size**2).reshape(-1, self._size))
+
+    def count_coins(self, s):
+        """Count the black and white coins on the board.
+        Useful to check winner of the game
+        
+        Parameters
+        ----------
+        s : Ndarray
+            the board state
+        
+        Returns
+        -------
+        (b, w) : tuple
+            tuple of ints containing the coin counts
+        """
+        return (s[:,:,0].sum(), s[:,:,1].sum())
 
     def _check_legal_index(self, row, col):
         """Check if the row and col indices are possible in the
@@ -187,15 +240,215 @@ class state_env:
                                     legal_moves[row, col] = 1
                                     # modify the respective positions
                                     if(play):
-                                        i = -1
+                                        i = 0
                                         while(True):
                                             i += 1
                                             if(row+i*del_row == n_row and col+i*del_col == n_col):
                                                 break
                                             s_new[row+i*del_row, col+i*del_col, opposite_player] = 0
                                             s_new[row+i*del_row, col+i*del_col, current_player] = 1
-        # change the player
-        if(play):
-            s_new[:,:,2] = opposite_player
+        # do not change the player in this function, instead do
+        # this in the step function to check for potential end conditions
+        # if(play):
+            # s_new[:,:,2] = opposite_player
         # return the updated boards
         return legal_moves.copy(), s_new.copy()
+
+class Game:
+    """This class handles the complete lifecycle of a game,
+    it keeping history of all the board state, keeps track of two players
+    and determines winners, rewards etc
+
+    Attributes
+    _p1 : Player
+        the first player
+    _p2 : Player
+        the second player
+    _size : int
+        the board size
+    _env : StateEnv
+        the state env to play game
+    _p : dict
+        the mapping indicating color of players
+    _hist : list
+        stores all the state transitions
+        [current board, current legal moves, current player, action,
+         next board, next legal moves, next player, done, reward]
+    """
+    def __init__(self, player1, player2, board_size=8):
+        """Initialize the game with the two specified players
+        the players have a move function which fetches where to play
+        the stone of their color next
+
+        Parameters
+        ----------
+        player1 : Player
+            the first player
+        player2 : Player
+            the second player
+        board_size : int, default 8
+            the size of board for othello
+        """
+        self._p1 = player1
+        self._p2 = player2
+        self._size = board_size
+        self._env = StateEnv(board_size=board_size)
+        self._rewards = {'tie':0, 'win':1, 'loss':-1}
+
+    def reset(self, random_assignment=False):
+        """Reset the game and randomly select who plays first"""
+        # reset environment
+        _, _, _ = self._env.reset()
+        # prepare object to track history
+        self._hist = []
+        # assign the first player
+        self._p = {1:self._p1, 0:self._p2}
+        if(np.random.rand() < 0.5 and random_assignment):
+            self._p = {0:self._p1, 1:self._p2}
+
+    def play(self):
+        """Play the game to the end"""
+        # get the starting state
+        s, legal_moves, current_player = self._env.reset()
+        done = 0
+        while not done:
+            # get the action from current player
+            a = self._p[current_player].move(s, legal_moves)
+            # step the environment
+            next_s, next_legal_moves, next_player, done = self._env.step(s, a)
+            # add to the historybject
+            self._hist.append([s.copy(), legal_moves.copy(), current_player, a, \
+                               next_s.copy(), next_legal_moves.copy(), next_player, 0])
+            # setup for next iteration of loop
+            s = next_s.copy()
+            current_player = next_player
+            legal_moves = next_legal_moves
+
+        # determine the winner
+        b, w = self._env.count_coins(s)
+        if(b > w):
+            winner = 0
+        elif(w > b):
+            winner = 1
+        else:
+            # tie
+            winner = -1
+
+        # modify the history object
+        self._hist[-1][-1] = winner
+
+        return winner
+
+    def record_gameplay(self, path='file.mp4'):
+        """Plays a game and saves the frames as individual pngs
+    
+        Parameters
+        ----------
+        path : str
+            the file name where to save the mp4/gif
+        """
+        frames_dir = 'temp_frames'
+        # reset the game
+        self.reset()
+        # play a full game
+        winner = self.play()
+        # use the history object to save to game
+        # temp_frames directory is reserved to save intermediate frames
+        if(os.path.exists(frames_dir)):
+            # clear out the directory
+            # shutil.rmtree(frames_dir)
+            for _, _, file_list in os.walk(frames_dir):
+                pass
+            for f in file_list:
+                os.remove(os.path.join(frames_dir, f))
+        else:
+            os.mkdir(frames_dir)
+        # plotting
+        ####### Begin Template Creation #######
+        # n * h + (n+1) * d = 1, where n is no of cells along 1 axis,
+        # h is height of one cell and d is the gap between 2 cells
+        delta = 0.005
+        cell_height = (1 - ((self._size + 1) * delta))/self._size
+        cell_height_half = cell_height/2.0
+        # plt x axis runs left to right while y runs bottom to top
+        # create the full template for the board here, then just change colors
+        # in the loop
+        fig, axs = plt.subplots(1, 1, figsize=(13, 13), dpi=72)
+        # add scatter points
+        # axs.scatter([0, 1, 0, 1], [0, 1, 1, 0])
+        ellipse_patch_list = []
+        # add horizontal and vertical lines
+        for i in range(self._size):
+            # linewidth is dependent on axis size and hence needs
+            # to be set manually
+            axs.axvline((2 * i + 1)*(delta/2) + i * cell_height, 
+                        color='white', lw=2)
+            axs.axhline((2 * i + 1)*(delta/2) + i * cell_height, 
+                        color='white', lw=2)
+        for _ in range(self._size):
+            ellipse_patch_list.append([0] * self._size)
+        # add the large rect determining the board
+        rect = Rectangle((delta, delta),
+                         width=1 - 2 * delta, 
+                         height=1 - 2 * delta,
+                         color='forestgreen')
+        axs.add_patch(rect)
+        # add circle patches
+        for i in range(self._size):
+            for j in range(self._size):
+                # i moves along y axis while j along x
+                cell_centre = ((j + 1) * delta + (2*j + 1) * cell_height_half,\
+                               (self._size - i) * delta + (2*(self._size - i) - 1) * cell_height_half)
+                # a circle will be placed where a coin is
+                ellipse = Ellipse(cell_centre,
+                                  width=((cell_height - delta)),
+                                  height=((cell_height - delta)),
+                                  angle=135,
+                                  color='forestgreen', alpha=0)
+                ellipse_patch_list[i][j] = ellipse
+                axs.add_patch(ellipse_patch_list[i][j])
+        ######## End Template Creation ########
+        # iterate over the game frames
+        fig_file_idx = 0
+        # iterate over the frames, for every frame, add 10 copies
+        # to add some persistence while viewing the video/gif
+        for idx in tqdm(range(len(self._hist))):
+            # clear figure
+            # plt.cla()
+            # get the board from history
+            s = self._hist[idx][0]
+            # prepare a single frame
+            for i in range(self._size):
+                for j in range(self._size):
+                    # i moves along y axis while j along x
+                    # a circle will be placed where a coin is
+                    # reset first
+                    if(s[i, j, 0] == 1):
+                        color = 'black'
+                        alpha = 1
+                    elif(s[i, j, 1] == 1):
+                        color = 'white'
+                        alpha = 1
+                    else:
+                        color = 'forestgreen'
+                        alpha = 0
+                    ellipse_patch_list[i][j].set_color(color)
+                    ellipse_patch_list[i][j].set_alpha(alpha)
+                    # axs.scatter(5, 5)
+            # figure is prepared, save in temp frames directory
+            # add a 10 frame transition with coins flipping
+            fig.savefig('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx), 
+                        bbox_inches='tight')
+            fig_file_start_idx = fig_file_idx
+            fig_file_idx += 1
+            if(1):
+                # copy the same file as nothing to animate
+                for _ in range(10):
+                    shutil.copyfile('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_start_idx),
+                                    '{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx))
+                    fig_file_idx += 1
+                
+        # all frames have been saved, use ffmpeg to convert to movie
+        os.system('ffmpeg -y -framerate 10 -pattern_type sequence -i "{:s}/img_%05d.png" \
+          -c:v libx264 -r 10 -pix_fmt yuv420p {:s}'\
+          .format(frames_dir, path))
