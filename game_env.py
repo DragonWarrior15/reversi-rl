@@ -84,7 +84,7 @@ class StateEnv:
             updated board
         legal_moves : Ndarray
             legal_moves for the next player
-        current_player : int
+        next_player : int
             whether 1 to play next or 0
         done : int
             1 if the game terminates, else 0
@@ -258,10 +258,400 @@ class StateEnv:
         # return the updated boards
         return legal_moves.copy(), s_new.copy()
 
+class StateConverter:
+    """Handles conversion between different types of board representations"""
+    def __init__(self, board_size=8):
+        self._size = board_size
+        # a multiplier matrix to convert ndarray to 64 bit int
+        self._array_to_bitboard = np.zeros(self._size**2, dtype=np.uint64)
+        x = 1
+        for i in range(self._array_to_bitboard.shape[0]-1, -1, -1):
+            self._array_to_bitboard[i] = x
+            x *= 2
+        # reshape
+        self._array_to_bitboard = self._array_to_bitboard.reshape((-1, self._size))
+
+    def convert(self, s, input_format, output_format):
+        """Convert from one board representation to another
+        internally, the data is stored as arrays
+
+        Parameters
+        ----------
+        s : tuple of Ndarray
+            input board to convert
+        input_format : str
+            the input format for board, bitboard or ndarray
+        output_format : str
+            the output format for board, bitboard or ndarray
+        
+        Returns
+        -------
+        s : tuple or Ndarray
+            converted board
+        """
+        # convert input to standard format
+        if(input_format == output_format):
+            return s
+        # internal storage format
+        board = np.zeros((self._size, self._size, 3), dtype=np.uint8)
+
+        # convert input format
+        if(input_format == 'bitboard'):
+            # s is a tuple, convert to arrays
+            # iterate to populate values
+            for coin in [0, 1]:
+                t = s[coin]
+                for i in range(self._size-1, -1, -1):
+                    for j in range(self._size-1, -1, -1):
+                        # same as %2 or get the last set bit
+                        board[i, j, coin] = t & 1
+                        # shift bits
+                        t = t >> 1
+            # set the player
+            board[:, :, 2] = s[2]
+        elif(input_format == 'ndarray3d'):
+            # no need to convert
+            board = s
+        elif(input_format == 'bitboard_single'):
+            # the bitboard is a single integer and can be
+            # converted to a single array
+            for i in range(self._size-1, -1, -1):
+                for j in range(self._size-1, -1, -1):
+                    board[i, j, 0] = s & 1
+                    s = s >> 1
+        elif(input_format == 'ndarray'):
+            # single board is input, example action mask, legal moves
+            board[:, :, 0] = s
+        elif(input_format == 'position'):
+            # integer denoting the position in the grid (row wise expanded)
+            # this can be the position where to take the action
+            board[s//self._size, s%self._size, 0] = 1
+        else:
+            print('Input type not understood')
+
+        # convert to output
+        if(output_format == 'bitboard'):
+            # convert array to bitboard
+            board_b = int(np.multiply(board[:, :, 0], self._array_to_bitboard).sum())
+            board_w = int(np.multiply(board[:, :, 1], self._array_to_bitboard).sum())
+            player = s[0, 0, 2]
+            return (board_b, board_w, player)
+        elif(output_format == 'ndarray3d'):
+            return board.copy()
+        elif(output_format == 'ndarray'):
+            # 2d array needs to be returned
+            return board[:, :, 0].copy()
+        elif(output_format == 'bitboard_single'):
+            # convert the first array to integer
+            return int(np.multiply(board[:, :, 0], self._array_to_bitboard).sum())
+        else:
+            print('Output type not understood')
+
+class StateEnvBitBoard:
+    """Alternate of the StateEnv class that uses bitboards for processing
+    to make the gameplay faster. This class will be hardcoded for 8x8 boards
+    as 64 bit processing is easier and faster to perform
+
+    Attributes
+    _size : int, default 8
+        size of the game board (square)
+    _max : int
+        64 int with all bits 1
+    _incorrect_shift_mask : dict
+        stores the mask defining legal shifts for every direction
+    _bit_shift_fn : dict
+        each entry is a function defining bit shifts for every direction
+    _directions : list
+        list containing strings denoting all directions
+    """
+    def __init__(self, board_size=8):
+        """Initializer for the game environment
+
+        some masks are hardcoded to handle incorrect shifts
+        for left shifts, right most column should not be populated
+        18374403900871474942 in binary
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+        1 1 1 1 1 1 1 0
+
+        for right top shift, left most column and bottom row should not be
+        populated, 9259542123273814271 in binary
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        1 1 1 1 1 1 1 1
+        
+        Parameters
+        ----------
+        board_size : int
+            kept 8 as the default for othello
+        """
+        self._size = 8
+        # the maximum value
+        self._max = 0xFFFFFFFFFFFFFFFF
+
+        # define the masks for incorrect bit shifts
+        # we can take direct & mask with these values instead
+        # of doing & ~mask
+        self._incorrect_shift_mask = {
+          'left'         : 18374403900871474942,
+          'right'        : 9187201950435737471,
+          'top'          : 18446744073709551360,
+          'bottom'       : 72057594037927935,
+          'right_top'    : 9187201950435737344,
+          'left_top'     : 18374403900871474688,
+          'right_bottom' : 35887507618889599,
+          'left_bottom'  : 71775015237779198,
+        }
+
+        # handy functions to apply bit shifts for different directions
+        self._bit_shift_fn = {
+            'left'         : lambda x: x << 1,
+            'right'        : lambda x: x >> 1,
+            'top'          : lambda x: x << 8,
+            'bottom'       : lambda x: x >> 8,
+            'right_top'    : lambda x: x << 7,
+            'left_top'     : lambda x: x << 9,
+            'right_bottom' : lambda x: x >> 9,
+            'left_bottom'  : lambda x: x >> 7,            
+        }
+
+        self._directions = self._bit_shift_fn.keys()
+
+
+    def reset(self):
+        """Reset the board to starting configuration
+        any handicap configurations will go here
+        
+        Returns
+        -------
+        starter_board : Ndarray
+            the numpy array containing the starting configuration
+            of the othello board, positions of black coin are at the
+            0th index, white at 1st index and current player at 2nd index
+        legal_moves : Ndarray
+            masked array denoting the legal positions
+        current_player : int
+            the integer denoting which player plays
+        """
+        starter_b = 34628173824 # check binary arranged as 8x8 to see why
+        starter_w = 68853694464 # check binary arranged as 8x8 to see why
+        player = 1 # white to start
+        starter_board = [starter_b, starter_w, player]
+        legal_moves = self._legal_moves_helper(starter_board)
+        
+        return [starter_board, legal_moves, player]
+
+    def step(self, s, a):
+        """Play a move on the board at the given action location
+        and also check for terminal cases, no moves possible etc
+
+        Parameters
+        ----------
+        s : tuple
+            current board state defined by bitboards for black, white coins
+            and the current player to play
+        a : int (64 bit)
+            the bit determining the position to play is set to 1
+
+        Returns
+        -------
+        s_next : list
+            updated bitboards for black, white coins, and next player
+        legal_moves : bitboard
+            legal moves for the next player
+        next_player : int
+            whether 1 to play next or 0
+        done : int
+            1 if the game terminates, else 0
+        """
+        # variable to track if the game has ended
+        # rewards will be determined by the game class
+        done = 0
+        s_next = self._get_next_board(s, a)
+        # change the player before checking for legal moves
+        s_next[2] = abs(1 - s[2])
+        legal_moves = self._legal_moves_helper(s_next)
+        # check if legal moves are available
+        if(legal_moves == 0):
+            # either the current player cannot play, or the game has ended
+            if(s_next[0] | s_next[1] == self._max):
+                # game has ended
+                done = 1
+            else:
+                # current player cannot play, switch player
+                s_next[2] = abs(1 - s_next[2])
+                # check for legal moves again
+                legal_moves = self._legal_moves_helper(s_next)
+                if(legal_moves == 0):
+                    # no moves are possible, game is over
+                    done = 1
+                else:
+                    # original player will play next and opposite player
+                    # will pass the turn, nothing to modify
+                    pass
+        # return
+        return s_next, legal_moves, s_next[2], done
+
+    def count_coins(self, s):
+        """Count black and white coins on board
+         Parameters
+         ----------
+         s : list
+            list containing black bitboard, white bitboard and current player
+
+        Returns
+        -------
+        w : int
+            count of white coins
+        b : int
+            count of black coins
+        """
+        w, b = 0, 0
+        # count black coins
+        t = s[0]
+        while(t):
+            b += (t & 1)
+            t = t >> 1
+        # count white coins
+        t = s[1]
+        while(t):
+            w += (t & 1)
+            t = t >> 1
+        return b, w
+
+    def _get_neighbors(self, s, e):
+        """Return neighbors of all set bits of input
+
+        Parameters
+        ----------
+        b : int (64 bit)
+            the input bitboard
+
+        e : int (64 bit)
+            the bitboard for empty cells
+
+        Returns
+        -------
+        n : int (64 bit)
+            the bitboard with neighbors as set bits
+        """
+        n = 0
+        # take or with all directions
+        # for each direction, shift bits and run the mask for incorrect shifts
+        for k in self._directions:
+            n = n | (self._bit_shift_fn[k](s) & self._incorrect_shift_mask[k])
+        # take intersection with empty cells
+        n = n & e
+        # return
+        return n
+
+    def _legal_moves_helper(self, board):
+        """Get the bitboard for legal moves of given player
+
+        Parameters
+        ----------
+        b : list
+            contains the bitboard for black coins, white coins and
+            the int representing player to play
+
+        Returns
+        m : int (64 bit)
+            bitboard representing the legal moves for player p
+        """
+        boards = {0 : board[0], 1 : board[1]}
+        p = board[2]
+        not_p = abs(1 - p)
+        m = 0
+        # define the empty set
+        e = self._max - (boards[0] | boards[1])
+        # for every direction, run the while loop to get legal moves
+        # the while loop traverses paths of same coloured coins
+        # get the set of positions where there is a coin of opposite player
+        # to the direction of player to play
+        for k in self._directions:
+            c = boards[not_p] & self._bit_shift_fn[k](boards[p]) & self._incorrect_shift_mask[k]
+            # keep travelling in the same direction until empty space is obtained
+            # this will constitute a legal move
+            # example : curr op op empty -> empty is legal move
+            while(c != 0):
+                # if immediately to direction is empty, this is a legal move
+                m = m | (e & self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k])
+                # we can continue the loop till we keep encoutering opposite player
+                c = boards[not_p] & self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k]
+        # return the completed legal moves list
+        return m
+
+    def _get_next_board(self, s, a):
+        """Determine the updated bitboard after performing action a
+        using player passed to the function
+
+        Parameters
+        ----------
+        s : list
+            contains the bitboards for white, black coins and 
+            the current player
+        a : int (64 bit)
+            the bit where action needs to be done is set to 1
+
+        Returns
+        -------
+        s_next : list
+            updated bitboards
+        """
+        boards = {0:s[0], 1:s[1]}
+        p = s[2]
+        not_p = abs(1 - p)
+        # define the empty set
+        e = self._max - (boards[0] | boards[1])
+        # keep a global updates master
+        update_master = 0
+        # run loops to make the changes
+        # this logic is dependent on the fact that in any direction
+        # only a single row/diagonal will be modified
+        for k in self._directions:
+            # define a local update master
+            m = 0
+            # the immediate neighbor should be of opposite player
+            c = boards[not_p] & self._bit_shift_fn[k](a) & self._incorrect_shift_mask[k]
+            # keep travelling in the same direction till you encounter same coin
+            valid = 0
+            while(c != 0):
+                # if c is a coin of current player, we have reached the end
+                if(c & boards[p]):
+                    valid = 1
+                    break
+                # if we have reached an empty cell, break and reset m
+                if(c & e):
+                    break
+                # otherwise, continue adding positions to m
+                m = m | c
+                # update c by shifting, do not check which coin type here
+                c = self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k]
+            if(valid == 0):
+                m = 0
+            # update the global master
+            update_master = update_master | m
+        # all directions searched, now update the bitboards
+        boards[p] = boards[p] | update_master | a
+        boards[not_p] = boards[not_p] - update_master
+        # return
+        return [boards[0], boards[1], p]
+
 class Game:
     """This class handles the complete lifecycle of a game,
     it keeping history of all the board state, keeps track of two players
     and determines winners, rewards etc
+    this class internally stores everything in the bitboard format
 
     Attributes
     _p1 : Player
@@ -296,13 +686,12 @@ class Game:
         self._p1 = player1
         self._p2 = player2
         self._size = board_size
-        self._env = StateEnv(board_size=board_size)
+        self._env = StateEnvBitBoard(board_size=board_size)
+        self._converter = StateConverter()
         self._rewards = {'tie':0, 'win':1, 'loss':-1}
 
     def reset(self, random_assignment=False):
-        """Reset the game and randomly select who plays first"""
-        # reset environment
-        _, _, _ = self._env.reset()
+        """Randomly select who plays first"""
         # prepare object to track history
         self._hist = []
         # assign the first player
@@ -311,18 +700,32 @@ class Game:
             self._p = {0:self._p1, 1:self._p2}
 
     def play(self):
-        """Play the game to the end"""
+        """Play the game to the end
+
+        Returns
+        -------
+        winner : int
+            0 if black wins else 1
+        """
         # get the starting state
         s, legal_moves, current_player = self._env.reset()
         done = 0
-        while not done:
+        while (not done):
             # get the action from current player
-            a = self._p[current_player].move(s, legal_moves)
+            a = self._p[current_player].move(self._converter.convert(s, 
+                                                input_format='bitboard',
+                                                output_format='ndarray3d'), 
+                                             self._converter.convert(legal_moves,
+                                                input_format='bitboard_single',
+                                                output_format='ndarray'))
             # step the environment
-            next_s, next_legal_moves, next_player, done = self._env.step(s, a)
+            next_s, next_legal_moves, next_player, done = \
+                            self._env.step(s, self._converter.convert(a,
+                                                    input_format='position',
+                                                    output_format='bitboard_single'))
             # add to the historybject
-            self._hist.append([s.copy(), legal_moves.copy(), current_player, a, \
-                               next_s.copy(), next_legal_moves.copy(), next_player, 0])
+            self._hist.append([s, legal_moves, current_player, a, \
+                               next_s, next_legal_moves, next_player, 0])
             # setup for next iteration of loop
             s = next_s.copy()
             current_player = next_player
@@ -406,7 +809,9 @@ class Game:
                          color='forestgreen')
         axs.add_patch(rect)
         # add circle patches
-        s = self._hist[0][0]
+        s = self._converter.convert(self._hist[0][0],
+                                    input_format='bitboard',
+                                    output_format='ndarray3d')
         # determine the color and alpha values
         color_array[s[:,:,0] == 1] = transition_color_list.index('black')
         color_array[s[:,:,1] == 1] = transition_color_list.index('white')
@@ -442,8 +847,12 @@ class Game:
             # clear figure
             # plt.cla()
             # get the board from history
-            s = self._hist[idx][0]
-            next_s = self._hist[idx][4]
+            s = self._converter.convert(self._hist[idx][0],
+                                    input_format='bitboard',
+                                    output_format='ndarray3d')
+            next_s = self._converter.convert(self._hist[idx][4],
+                                    input_format='bitboard',
+                                    output_format='ndarray3d')
             # prepare a single frame
             for t in range(frames_per_anim):
                 # determine the color and alpha values
