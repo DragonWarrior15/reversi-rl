@@ -380,15 +380,15 @@ class StateEnvBitBoard:
         1 1 1 1 1 1 1 0
 
         for right top shift, left most column and bottom row should not be
-        populated, 9259542123273814271 in binary
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 0 0 0 0 0 0 0
-        1 1 1 1 1 1 1 1
+        populated, 9187201950435737344 in binary
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 1 1 1 1 1 1 1
+        0 0 0 0 0 0 0 0
         
         Parameters
         ----------
@@ -713,16 +713,20 @@ class Game:
         while (not done):
             # get the action from current player
             a = self._p[current_player].move(self._converter.convert(s, 
-                                                input_format='bitboard',
-                                                output_format='ndarray3d'), 
-                                             self._converter.convert(legal_moves,
-                                                input_format='bitboard_single',
-                                                output_format='ndarray'))
+                                input_format='bitboard',
+                                output_format=\
+                    self._p[current_player].get_state_input_format()), 
+                         self._converter.convert(legal_moves,
+                                input_format='bitboard_single',
+                                output_format=\
+                    self._p[current_player].get_legal_moves_input_format()))
+            a = self._converter.convert(a,
+                            input_format=\
+                    self._p[current_player].get_move_output_format(),
+                                        output_format='bitboard_single')
             # step the environment
             next_s, next_legal_moves, next_player, done = \
-                            self._env.step(s, self._converter.convert(a,
-                                                    input_format='position',
-                                                    output_format='bitboard_single'))
+                            self._env.step(s, a)
             # add to the historybject
             self._hist.append([s, legal_moves, current_player, a, \
                                next_s, next_legal_moves, next_player, 0])

@@ -2,7 +2,18 @@
 import numpy as np
 
 class Player:
-    """The base class for player. All common attributes/functions go here"""
+    """The base class for player. All common attributes/functions go here
+
+    Attributes
+    _size : int
+        the board size
+    _s_input_format : str
+        input format in which player accepts board state 
+    _legal_moves_input_format : str
+        input format in which player accepts legal moves mask
+    _move_output_format : str
+        output format in which player returns the selected move
+    """
     def __init__(self, board_size=8):
         """Initializer
 
@@ -12,6 +23,24 @@ class Player:
             size of game board
         """
         self._size = board_size
+        # io format for state (not relevant here)
+        self._s_input_format = 'bitboard'
+        # io format for legal moves
+        self._legal_moves_input_format = 'bitboard_single'
+        # io for output (move)
+        self._move_output_format = 'bitboard_single'
+
+    def get_state_input_format(self):
+        """Return the input format for game state"""
+        return self._s_input_format
+
+    def get_legal_moves_input_format(self):
+        """Return the input format for legal moves"""
+        return self._legal_moves_input_format
+
+    def get_move_output_format(self):
+        """Return the output format for selected move"""
+        return self._move_output_format
 
 class RandomPlayer(Player):
     """Random player that selects moves randomly
@@ -23,18 +52,27 @@ class RandomPlayer(Player):
 
         Parameters
         ----------
-        s : Ndarray
-            board state
-        legal_moves : Ndarray
-            mask of the legal states
+        s : tuple
+            contains black and white bitboards and current player
+        legal_moves : int (64 bit)
+            legal states are set
 
         Returns
         -------
-        a : int
-            the position where to play
+        a : int (64 bit)
+            bitboard representing position to play
         """
-        legal_moves = legal_moves * np.random.rand(*legal_moves.shape)
-        legal_moves[legal_moves == legal_moves.max()] = 1
-        legal_moves[legal_moves < 1] = 0
-        legal_moves = legal_moves * np.arange(self._size**2).reshape(legal_moves.shape)
-        return int(legal_moves.max())
+        if(not legal_moves):
+            return 0
+        idx = 0
+        move_list = []
+        while(legal_moves):
+            if(legal_moves & 1):
+                move_list.append(idx)
+            legal_moves = legal_moves >> 1
+            idx += 1
+        np.random.shuffle(move_list)
+        # idx represents position from end
+        # hence bitboard can be prepared by simply shifting 1
+        # by the idx
+        return 1 << move_list[0]
