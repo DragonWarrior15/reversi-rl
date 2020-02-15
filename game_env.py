@@ -410,7 +410,7 @@ class StateEnvBitBoard:
           'right_top'    : 9187201950435737344,
           'left_top'     : 18374403900871474688,
           'right_bottom' : 35887507618889599,
-          'left_bottom'  : 71775015237779198,
+          'left_bottom'  : 71775015237779198
         }
 
         # handy functions to apply bit shifts for different directions
@@ -422,7 +422,7 @@ class StateEnvBitBoard:
             'right_top'    : lambda x: x << 7,
             'left_top'     : lambda x: x << 9,
             'right_bottom' : lambda x: x >> 9,
-            'left_bottom'  : lambda x: x >> 7,            
+            'left_bottom'  : lambda x: x >> 7    
         }
 
         self._directions = self._bit_shift_fn.keys()
@@ -479,7 +479,7 @@ class StateEnvBitBoard:
         done = 0
         s_next = self._get_next_board(s, a)
         # change the player before checking for legal moves
-        s_next[2] = abs(1 - s[2])
+        s_next[2] = 0 if(s[2]) else 1
         legal_moves = self._legal_moves_helper(s_next)
         # check if legal moves are available
         if(legal_moves == 0):
@@ -489,7 +489,7 @@ class StateEnvBitBoard:
                 done = 1
             else:
                 # current player cannot play, switch player
-                s_next[2] = abs(1 - s_next[2])
+                s_next[2] = 0 if(s_next[2]) else 1
                 # check for legal moves again
                 legal_moves = self._legal_moves_helper(s_next)
                 if(legal_moves == 0):
@@ -555,12 +555,12 @@ class StateEnvBitBoard:
         # return
         return n
 
-    def _legal_moves_helper(self, board):
+    def _legal_moves_helper(self, s):
         """Get the bitboard for legal moves of given player
 
         Parameters
         ----------
-        b : list
+        s : list
             contains the bitboard for black coins, white coins and
             the int representing player to play
 
@@ -568,27 +568,90 @@ class StateEnvBitBoard:
         m : int (64 bit)
             bitboard representing the legal moves for player p
         """
-        boards = {0 : board[0], 1 : board[1]}
-        p = board[2]
-        not_p = abs(1 - p)
+        p = s[2]
+        not_p = 0 if(p) else 1
+        board_p = s[p]
+        board_notp = s[not_p]
         m = 0
         # define the empty set
-        e = self._max - (boards[0] | boards[1])
+        e = self._max - (board_p | board_notp)
         # for every direction, run the while loop to get legal moves
         # the while loop traverses paths of same coloured coins
         # get the set of positions where there is a coin of opposite player
         # to the direction of player to play
+        """
         for k in self._directions:
-            c = boards[not_p] & self._bit_shift_fn[k](boards[p]) & self._incorrect_shift_mask[k]
+            c = board_notp & self._bit_shift_fn[k](board_p) & self._incorrect_shift_mask[k]
             # keep travelling in the same direction until empty space is obtained
             # this will constitute a legal move
             # example : curr op op empty -> empty is legal move
-            while(c != 0):
+            while(c):
                 # if immediately to direction is empty, this is a legal move
                 m = m | (e & self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k])
-                # we can continue the loop till we keep encoutering opposite player
-                c = boards[not_p] & self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k]
+                # we can continue the loop till we keep encountering opposite player
+                c = board_notp & self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k]
         # return the completed legal moves list
+        """
+        # the above code is generic and easy to read
+        # following is an implementation to prevent redicrections and loops
+        # leads to slightly faster implementation
+        # left
+        c = board_notp & (board_p << 1) & 18374403900871474942
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c << 1) & 18374403900871474942)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c << 1) & 18374403900871474942
+        # right
+        c = board_notp & (board_p >> 1) & 9187201950435737471
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c >> 1) & 9187201950435737471)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c >> 1) & 9187201950435737471
+        # top
+        c = board_notp & (board_p << 8) & 18446744073709551360
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c << 8) & 18446744073709551360)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c << 8) & 18446744073709551360
+        # bottom
+        c = board_notp & (board_p >> 8) & 72057594037927935
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c >> 8) & 72057594037927935)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c >> 8) & 72057594037927935
+        # right_top
+        c = board_notp & (board_p << 7) & 9187201950435737344
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c << 7) & 9187201950435737344)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c << 7) & 9187201950435737344
+        # left_top
+        c = board_notp & (board_p << 9) & 18374403900871474688
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c << 9) & 18374403900871474688)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c << 9) & 18374403900871474688
+        # right_bottom
+        c = board_notp & (board_p >> 9) & 35887507618889599
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c >> 9) & 35887507618889599)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c >> 9) & 35887507618889599
+        # left_bottom
+        c = board_notp & (board_p >> 7) & 71775015237779198
+        while(c):
+            # if immediately to direction is empty, this is a legal move
+            m = m | (e & (c >> 7) & 71775015237779198)
+            # we can continue the loop till we keep encountering opposite player
+            c = board_notp & (c >> 7) & 71775015237779198
+        # return final legal moves
         return m
 
     def _get_next_board(self, s, a):
@@ -608,44 +671,128 @@ class StateEnvBitBoard:
         s_next : list
             updated bitboards
         """
-        boards = {0:s[0], 1:s[1]}
         p = s[2]
-        not_p = abs(1 - p)
-        # define the empty set
-        e = self._max - (boards[0] | boards[1])
+        not_p = 0 if(p) else 1
+        board_p = s[p]
+        board_notp = s[not_p]
         # keep a global updates master
         update_master = 0
         # run loops to make the changes
         # this logic is dependent on the fact that in any direction
         # only a single row/diagonal will be modified
+        """
         for k in self._directions:
             # define a local update master
             m = 0
             # the immediate neighbor should be of opposite player
-            c = boards[not_p] & self._bit_shift_fn[k](a) & self._incorrect_shift_mask[k]
+            c = board_notp & self._bit_shift_fn[k](a) & self._incorrect_shift_mask[k]
             # keep travelling in the same direction till you encounter same coin
-            valid = 0
-            while(c != 0):
+            while(c & board_notp):
                 # if c is a coin of current player, we have reached the end
-                if(c & boards[p]):
-                    valid = 1
-                    break
                 # if we have reached an empty cell, break and reset m
-                if(c & e):
-                    break
                 # otherwise, continue adding positions to m
                 m = m | c
                 # update c by shifting, do not check which coin type here
                 c = self._bit_shift_fn[k](c) & self._incorrect_shift_mask[k]
-            if(valid == 0):
+            # last encounter after breaking from loop should be same player coin
+            if(not(c & board_p)):
+                # nothing to modify for this direction
                 m = 0
             # update the global master
             update_master = update_master | m
+        """
+        # the above is an easier to read code
+        # below implementation is similar to above, but without any
+        # redirections or for loop to slightly increase speed
+        # left
+        m = 0
+        c = board_notp & (a << 1) & 18374403900871474942
+        while(c & board_notp):
+            m = m | c
+            c = (c << 1) & 18374403900871474942
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # right
+        m = 0
+        c = board_notp & (a >> 1) & 9187201950435737471
+        while(c & board_notp):
+            m = m | c
+            c = (c >> 1) & 9187201950435737471
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # top
+        m = 0
+        c = board_notp & (a << 8) & 18446744073709551360
+        while(c & board_notp):
+            m = m | c
+            c = (c << 8) & 18446744073709551360
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # bottom
+        m = 0
+        c = board_notp & (a >> 8) & 72057594037927935
+        while(c & board_notp):
+            m = m | c
+            c = (c >> 8) & 72057594037927935
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # right_top
+        m = 0
+        c = board_notp & (a << 7) & 9187201950435737344
+        while(c & board_notp):
+            m = m | c
+            c = (c << 7) & 9187201950435737344
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # left_top
+        m = 0
+        c = board_notp & (a << 9) & 18374403900871474688
+        while(c & board_notp):
+            m = m | c
+            c = (c << 9) & 18374403900871474688
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # right_bottom
+        m = 0
+        c = board_notp & (a >> 9) & 35887507618889599
+        while(c & board_notp):
+            m = m | c
+            c = (c >> 9) & 35887507618889599
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        # left_bottom
+        m = 0
+        c = board_notp & (a >> 7) & 71775015237779198
+        while(c & board_notp):
+            m = m | c
+            c = (c >> 7) & 71775015237779198
+        if(not(c & board_p)):
+            m = 0
+        else:
+            update_master = update_master | m
+        
         # all directions searched, now update the bitboards
-        boards[p] = boards[p] | update_master | a
-        boards[not_p] = boards[not_p] - update_master
+        board_p = board_p | update_master | a
+        board_notp = board_notp - update_master
         # return
-        return [boards[0], boards[1], p]
+        if(p == 0):
+            return [board_p, board_notp, p]
+        else:
+            return [board_notp, board_p, p]
 
 class Game:
     """This class handles the complete lifecycle of a game,
@@ -690,7 +837,7 @@ class Game:
         self._converter = StateConverter()
         self._rewards = {'tie':0, 'win':1, 'loss':-1}
 
-    def reset(self, random_assignment=False):
+    def reset(self, random_assignment=True):
         """Randomly select who plays first"""
         # prepare object to track history
         self._hist = []

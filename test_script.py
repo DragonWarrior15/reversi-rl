@@ -252,9 +252,9 @@ while(1):
     break
 
 
-# check time taken to play 1000 games
+# check time taken to play 10000 games
 if(success):
-    total_games = 1000
+    total_games = 10000
     time_list = np.zeros(total_games)
     for i in tqdm(range(total_games)):
         start_time = time.time()
@@ -262,8 +262,8 @@ if(success):
         winner = g.play()
         time_list[i] = time.time() - start_time
     # print results
-    print('Total time taken to play {:d} games : {:.3f}s'.format(total_games, time_list.sum()))
-    print('Average time per game : {:.3f}s +- {:.3f}s'.format(np.mean(time_list), np.std(time_list)))
+    print('Total time taken to play {:d} games : {:.5f}s'.format(total_games, time_list.sum()))
+    print('Average time per game : {:.5f}s +- {:.5f}s'.format(np.mean(time_list), np.std(time_list)))
 
 
 # record and save game
