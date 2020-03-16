@@ -7,7 +7,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Ellipse
 import shutil
-from tqdm import tqdm
+# from tqdm import tqdm
 
 class StateEnv:
     """Base class that implements all the rules of the game
@@ -131,7 +131,7 @@ class StateEnv:
         print(s_print)
         if(legal_moves is not None):
             print(legal_moves * np.arange(self._size**2).reshape(-1, self._size))
-
+ 
     def count_coins(self, s):
         """Count the black and white coins on the board.
         Useful to check winner of the game
@@ -798,10 +798,10 @@ class Game:
     """This class handles the complete lifecycle of a game,
     it keeping history of all the board state, keeps track of two players
     and determines winners, rewards etc
-    this class internally stores everything in the bitboard format
-
     Attributes
     _p1 : Player
+    this class internally stores everything in the bitboard format
+
         the first player
     _p2 : Player
         the second player
@@ -876,7 +876,7 @@ class Game:
                             self._env.step(s, a)
             # add to the historybject
             self._hist.append([s, legal_moves, current_player, a, \
-                               next_s, next_legal_moves, next_player, 0])
+                               next_s, next_legal_moves, next_player, done, -1])
             # setup for next iteration of loop
             s = next_s.copy()
             current_player = next_player
@@ -896,6 +896,73 @@ class Game:
         self._hist[-1][-1] = winner
 
         return winner
+
+    def create_board_reps(self, transition_list):
+        """
+        Returns a dictionary containing transition list of each transformation of the board
+        Total of 12 representation are possible 4 sides of the board X 3 views - normal, horizontal-flip
+        vertical - flip
+        # takes 3ms per transition list
+
+        Returns
+        --------
+        transition_dict - Dictionary consisting of transition list of each representation of the board  
+
+        """
+
+        s, legal_moves, current_player, a, next_s,\
+        next_legal_moves, next_player, done, winner = transition_list
+        
+        s1_nd = self._converter.convert(s[0], input_format='bitboard_single', output_format='ndarray')
+        s2_nd = self._converter.convert(s[1], input_format='bitboard_single', output_format='ndarray')
+        legal_moves_nd = self._converter.convert(legal_moves, input_format='bitboard_single',\
+                                                 output_format='ndarray')
+        a_nd = self._converter.convert(a, input_format='bitboard_single', output_format='ndarray')
+        next_s1_nd = self._converter.convert(next_s[0], input_format='bitboard_single',\
+                                             output_format='ndarray')
+        next_s2_nd = self._converter.convert(next_s[1], input_format='bitboard_single',\
+                                             output_format='ndarray')
+        next_legal_moves_nd = self._converter.convert(next_legal_moves, input_format='bitboard_single',\
+                                                      output_format='ndarray')
+        nd_list = [s1_nd, s2_nd, legal_moves_nd, a_nd, next_s1_nd, next_s2_nd, next_legal_moves_nd]
+
+        transition_dict = {}
+        transition_dict['normal_bottom'] = transition_list
+
+        self._nd_trans_fn = {'normal_left': lambda x: np.rot90(x, 1),
+                             'normal_top': lambda x: np.rot90(x, 2),
+                             'normal_right': lambda x: np.rot90(x, 3),
+                             'horizontal_bottom': lambda x: np.flip(x, axis=0),
+                             'horizontal_left': lambda x: np.rot90(np.flip(x, axis=0), 1),
+                             'horizontal_top': lambda x: np.rot90(np.flip(x, axis=0), 2),
+                             'horizontal_right': lambda x: np.rot90(np.flip(x, axis=0), 3),
+                             'vertical_bottom': lambda x: np.flip(x, axis=1),
+                             'vertical_left': lambda x: np.rot90(np.flip(x, axis=1), 1),
+                             'vertical_top': lambda x: np.rot90(np.flip(x, axis=1), 2),
+                             'vertical_right': lambda x: np.rot90(np.flip(x, axis=1), 3)}
+
+        for key in self._nd_trans_fn.keys():
+            temp_nd_list = [self._nd_trans_fn[key](nd_arr) for nd_arr in nd_list]
+            transition_dict[key] = [
+            # transformed states list
+            [int(np.multiply(temp_nd_list[0], self._converter._array_to_bitboard).sum()),
+             int(np.multiply(temp_nd_list[1], self._converter._array_to_bitboard).sum()),
+             s[2]],
+            # transformed legal moves
+            int(np.multiply(temp_nd_list[2], self._converter._array_to_bitboard).sum()),
+            current_player,
+            # tranformed actions
+            int(np.multiply(temp_nd_list[3], self._converter._array_to_bitboard).sum()),
+            # transformed next states
+            [int(np.multiply(temp_nd_list[4], self._converter._array_to_bitboard).sum()),
+             int(np.multiply(temp_nd_list[5], self._converter._array_to_bitboard).sum()),
+             next_s[2]],
+            # transformed next state legal moves
+            int(np.multiply(temp_nd_list[6], self._converter._array_to_bitboard).sum()),
+            next_player, done, winner]
+
+        return transition_dict 
+        
 
     def record_gameplay(self, path='file.mp4'):
         """Plays a game and saves the frames as individual pngs
