@@ -1085,7 +1085,31 @@ class Game:
                      next_player, done, winner]
                 r.append(l)
 
-        return r 
+        return r
+
+    def get_game_history(self, augmentations=False):
+        """
+        Return the history of the current game played and
+        return history with transitions if necessary
+        
+        Parameters
+        ----------
+        augmentations : bool
+            whether to return history with augmentations
+
+        Returns
+        -------
+        transition_list : list of lists
+            a list containing all history transitions with/without augmentations
+        """
+        if(not augmentations):
+            return self._hist
+        else:
+            hist_len = len(self._hist)
+            transition_list = self._hist.copy()
+            for i in range(hist_len):
+                transition_list += self.create_board_reps(transition_list[i])
+            return transition_list
         
     def record_gameplay(self, path='file.mp4'):
         """Plays a game and saves the frames as individual pngs
