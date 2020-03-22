@@ -852,12 +852,12 @@ class Game:
            bitboard of vertical flip of the input bitboard
 
         """
-
         k1 = 0x00FF00FF00FF00FF
         k2 = 0x0000FFFF0000FFFF
+        k3 = 0x00000000FFFFFFFF
         x = ((x >>  8) & k1) | ((x & k1) <<  8);
         x = ((x >> 16) & k2) | ((x & k2) << 16);
-        x = ( x >> 32)       | ( x       << 32);
+        x = ((x >> 32) & k3) | ((x & k3) << 32);
         
         return x;
     
@@ -876,7 +876,6 @@ class Game:
            bitboard of horizontal flip of the input bitboard
 
         """
-
         k1 = 0x5555555555555555
         k2 = 0x3333333333333333
         k4 = 0x0f0f0f0f0f0f0f0f
@@ -902,7 +901,6 @@ class Game:
            bitboard of diagonal flip of the input bitboard
 
         """
-        
         k1 = 0xaa00aa00aa00aa00
         k2 = 0xcccc0000cccc0000
         k4 = 0xf0f0f0f00f0f0f0f
@@ -931,7 +929,6 @@ class Game:
            bitboard of anti-diagonal flip of the input bitboard
 
         """
-        
         k1 = 0x5500550055005500
         k2 = 0x3333000033330000
         k4 = 0x0f0f0f0f00000000
@@ -959,8 +956,7 @@ class Game:
            bitboard of 90 deg clock-wise rotation of the input bitboard
 
         """
-        
-        return self._flip_vertical(self._flip_diag(x))
+        return self._flip_vertical(self._flip_anti_diag(x))
     
     def _rot_180(self, x):
         """
@@ -977,7 +973,6 @@ class Game:
            bitboard of 180 deg rotaion of the input bitboard
 
         """
-        
         return self._flip_horizontal(self._flip_vertical(x))
     
     def _rot_anticlock_90(self, x):
@@ -995,8 +990,7 @@ class Game:
            bitboard of 90 deg anti-clockwise rotaion of the input bitboard
 
         """
-        
-        return self._flip_diag(self._flip_vertical(x))  
+        return self._flip_anti_diag(self._flip_vertical(x))  
 
     def reset(self, random_assignment=True):
         """Randomly select who plays first"""
@@ -1074,7 +1068,6 @@ class Game:
         r - list of transition lists of all representations of the board
 
         """
-
         s, legal_moves, current_player, a, next_s,\
         next_legal_moves, next_player, done, winner = transition_list
         
