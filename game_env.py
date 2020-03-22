@@ -859,7 +859,7 @@ class Game:
         x = ((x >> 16) & k2) | ((x & k2) << 16);
         x = ((x >> 32) & k3) | ((x & k3) << 32);
         
-        return x;
+        return x
     
     def _flip_horizontal(self, x):
         """
@@ -901,16 +901,15 @@ class Game:
            bitboard of diagonal flip of the input bitboard
 
         """
-        k1 = 0xaa00aa00aa00aa00
-        k2 = 0xcccc0000cccc0000
-        k4 = 0xf0f0f0f00f0f0f0f
-        t  =       x ^ (x << 36) 
-        x ^= k4 & (t ^ (x >> 36))
-        t  = k2 & (x ^ (x << 18))
-        x ^=       t ^ (t >> 18) 
-        t  = k1 & (x ^ (x <<  9))
-        x ^=       t ^ (t >>  9) 
-        
+        k1 = 0x5500550055005500
+        k2 = 0x3333000033330000
+        k4 = 0x0f0f0f0f00000000
+        t  = k4 & (x ^ (x << 28))
+        x ^=       t ^ (t >> 28) 
+        t  = k2 & (x ^ (x << 14))
+        x ^=       t ^ (t >> 14) 
+        t  = k1 & (x ^ (x <<  7))
+        x ^=       t ^ (t >>  7) 
         return x
 
     def _flip_anti_diag(self, x):
@@ -929,16 +928,15 @@ class Game:
            bitboard of anti-diagonal flip of the input bitboard
 
         """
-        k1 = 0x5500550055005500
-        k2 = 0x3333000033330000
-        k4 = 0x0f0f0f0f00000000
-        t  = k4 & (x ^ (x << 28))
-        x ^=       t ^ (t >> 28) 
-        t  = k2 & (x ^ (x << 14))
-        x ^=       t ^ (t >> 14) 
-        t  = k1 & (x ^ (x <<  7))
-        x ^=       t ^ (t >>  7) 
-        
+        k1 = 0xaa00aa00aa00aa00
+        k2 = 0xcccc0000cccc0000
+        k4 = 0xf0f0f0f00f0f0f0f
+        t  =       x ^ (x << 36) 
+        x ^= k4 & (t ^ (x >> 36))
+        t  = k2 & (x ^ (x << 18))
+        x ^=       t ^ (t >> 18) 
+        t  = k1 & (x ^ (x <<  9))
+        x ^=       t ^ (t >>  9) 
         return x
     
     def _rot_clock_90(self, x):
@@ -956,7 +954,7 @@ class Game:
            bitboard of 90 deg clock-wise rotation of the input bitboard
 
         """
-        return self._flip_vertical(self._flip_anti_diag(x))
+        return self._flip_diag(self._flip_vertical(x))  
     
     def _rot_180(self, x):
         """
@@ -990,7 +988,7 @@ class Game:
            bitboard of 90 deg anti-clockwise rotaion of the input bitboard
 
         """
-        return self._flip_anti_diag(self._flip_vertical(x))  
+        return self._flip_vertical(self._flip_diag(x))
 
     def reset(self, random_assignment=True):
         """Randomly select who plays first"""
@@ -1057,6 +1055,10 @@ class Game:
         Returns a list containing transition list of each transformation of the board
         Total of 20 representation are possible; 4 sides of the board X 5 views - normal, horizontal-flip
         vertical - flip, diagonal flip and anti-diagonal flip
+        a lot of these augmentations are redundant and we only return the following 8
+        normal, normal rot clock 90, normal rot 180, normal rot anti clock 90
+        vertical, vertical rot clock 90, vertical rot 180, vertical rot anti clock 90
+        where normal is base transition and vertical is vertical flip
 
         Parameters:
         ----------
@@ -1073,8 +1075,7 @@ class Game:
         
         r = []
         
-        for fn_1 in [lambda x: x, self._flip_vertical, self._flip_horizontal,
-                     self._flip_diag, self._flip_anti_diag]:
+        for fn_1 in [lambda x: x, self._flip_vertical]:
             # lambda function is for representing normal board state
             for fn_2 in [lambda x: x, self._rot_clock_90, self._rot_180, self._rot_anticlock_90]:
                 l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], fn_2(fn_1(legal_moves)),

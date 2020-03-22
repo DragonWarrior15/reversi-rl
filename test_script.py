@@ -254,7 +254,7 @@ while(1):
 
 
 # check time taken to play 10000 games
-if(success):
+if(0):
     total_games = 10000
     time_list = np.zeros(total_games)
     for i in tqdm(range(total_games)):
@@ -343,19 +343,18 @@ def get_board_augmentations(transition):
     transition_list : list
         list of augmented transitions
     """
-    transition_list = [transition]
-    f = lambda x: conv.convert(conv.convert(x, 
-                     input_format='bitboard_single', output_format='ndarray'),
-                    input_format='ndarray', output_format='bitboard_single')
+    transition_list = []
+    fa = lambda x: conv.convert(x, input_format='bitboard_single', output_format='ndarray')
+    fb = lambda x: conv.convert(x, input_format='ndarray', output_format='bitboard_single')
     for f1 in [lambda x: x, np.flipud]:
         for f2 in [lambda x: x,
                    lambda x: np.rot90(np.rot90(np.rot90(x))),
                    lambda x: np.rot90(np.rot90(x)),
                    lambda x: np.rot90(x)]:
-            f_temp = lambda x: f2(f1(f(x)))
-            transition_list.append([[f_temp(transition[0][0]), f_temp(transition[0][1]), f_temp(transition[0][2])],
+            f_temp = lambda x: fb(f2(f1(fa(x))))
+            transition_list.append([[f_temp(transition[0][0]), f_temp(transition[0][1]), transition[0][2]],
                                        f_temp(transition[1]), transition[2], f_temp(transition[3]),
-                                       [f_temp(transition[4][0]), f_temp(transition[4][1]), f_temp(transition[4][2])], 
+                                       [f_temp(transition[4][0]), f_temp(transition[4][1]), transition[4][2]], 
                                        f_temp(transition[5]), transition[6], transition[7], transition[8]])
     return transition_list
 
