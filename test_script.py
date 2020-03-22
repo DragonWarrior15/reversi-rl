@@ -107,6 +107,7 @@ def compare_boards(s, correct_s, case_no):
 
 # test cases to check if the environment is working correctly
 while(1):
+    print('RUNNING TEST CASES FOR GAME ENVIRONMENT')
     success = True
     env = StateEnvBitBoard(board_size=board_size)
     conv = StateConverter()
@@ -269,3 +270,92 @@ if(success):
 # record and save game
 # for i in range(6, 11):
     # g.record_gameplay('images/gameplay_random_{:d}.mp4'.format(i))
+
+
+# test cases to check if board augmentation is implemented correctly
+# first a block of code to check which transformations are redundant
+while(0):
+    x = np.arange(64, dtype=np.uint8).reshape(-1, 8)
+    transition_dict  = {
+        'normal'        : x,
+        'vertical'      : np.flipud(x).copy(),
+        'horizontal'    : np.fliplr(x).copy(),
+        'diagonal'      : x.T.copy(),
+    }
+    base_transitions = list(transition_dict.keys())
+    for k in base_transitions:
+        x = transition_dict[k]
+        transition_dict[k + '_rot_clock_90']     = np.rot90(np.rot90(np.rot90(x))).copy()
+        transition_dict[k + '_rot_180']          = np.rot90(np.rot90(x)).copy()
+        transition_dict[k + '_rot_anticlock_90'] = np.rot90(x).copy()
+
+    base_transitions = [
+        'normal',
+        'normal_rot_clock_90',
+        'normal_rot_180',
+        'normal_rot_anticlock_90',
+        'vertical',
+        'vertical_rot_clock_90',
+        'vertical_rot_180',
+        'vertical_rot_anticlock_90',
+        'horizontal',
+        'horizontal_rot_clock_90',
+        'horizontal_rot_180',
+        'horizontal_rot_anticlock_90',
+        'diagonal',
+        'diagonal_rot_clock_90',
+        'diagonal_rot_180',
+        'diagonal_rot_anticlock_90',
+    ]
+
+    remove_list = []
+    for i1 in range(len(base_transitions) - 1):
+        for i2 in range(i1+1, len(base_transitions)):
+            if((transition_dict[base_transitions[i1]] == \
+                transition_dict[base_transitions[i2]]).sum() == 64):
+                print('{:30s} {:20s}'.format(base_transitions[i1], base_transitions[i2]))
+                remove_list.append(base_transitions[i2])
+
+    base_transitions = [x for x in base_transitions if x not in remove_list]
+    print('transitions to keep', base_transitions, len(base_transitions))
+    """
+    transitions to keep ['normal', 'normal_rot_clock_90', 'normal_rot_180', 
+    'normal_rot_anticlock_90', 'vertical', 'vertical_rot_clock_90', 'vertical_rot_180', 
+    'vertical_rot_anticlock_90'] 8
+    """
+
+# test cases
+while(1):
+    print('RUNNING TEST CASES FOR BOARD AUGMENTATION FUNCTION')
+    success = True
+    env = StateEnvBitBoard(board_size=board_size)
+    conv = StateConverter()  
+    ######## Case 1: custom board from a match ########
+    # https://www.worldothello.org/about/world-othello-championship/woc/2017/round/5
+    # Maria Serena Vecchi 13-51 Caroline Nicolas, move 53 - 54
+    print('Running Case 1: Custom board from a match')
+    [s, legal_moves, current_player, a, \
+                               next_s, next_legal_moves, next_player, 0]
+    base_transition = [[9055374549248, 827328404604, 1], 8011054621671425, 1, 1<<46, \
+                    [8917667160320, 71333779971196, 0], 18067175084392960, 0, 0]
+    correct_transitions = base_transition
+    f1 = lambda x: conv.convert(conv.convert(x, 
+                     input_format='bitboard_single', output_format='ndarray'),
+                    input_format='ndarray', output_format='bitboard_single')
+    for f in [lambda x: np.rot90(np.rot90(np.rot90(f1(x)))),
+              lambda x: np.rot90(np.rot90(f1(x))),
+              lambda x: np.rot90(f1(x))]:
+        correct_transitions.append([[]])
+               [[13625251641962560, 8685351176903852064, 1], 19144722266590360, 1, 1125899906842624, \
+               [13616386829463616, 8686485941623193632, 0], 567365179818000, 0, 0] + \
+               [[147519516997716992, 288238102915911966, 1], 1815056479437201920, 1, 8192, \
+               [147519516862450688, 288238103051186462, 0], 577023702795829248, 0, 0] + \
+               [[37232187733442560, 4483818335200346112, 1], 9223935539792459776, 1, 131072, \
+               [37232153306595328, 4483818369627324416, 0], 18014948266082816, 0, 0] + \
+
+
+    # do the comparisons stepwise
+    success = success & compare_boards([next_s, next_legal_moves, next_player, done], 
+                   [correct_s, \
+                        correct_legal_moves, correct_player, 0], 
+                    7)
