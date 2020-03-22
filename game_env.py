@@ -131,7 +131,7 @@ class StateEnv:
         print(s_print)
         if(legal_moves is not None):
             print(legal_moves * np.arange(self._size**2).reshape(-1, self._size))
-
+ 
     def count_coins(self, s):
         """Count the black and white coins on the board.
         Useful to check winner of the game
@@ -799,7 +799,7 @@ class Game:
     it keeping history of all the board state, keeps track of two players
     and determines winners, rewards etc
     this class internally stores everything in the bitboard format
-
+    
     Attributes
     _p1 : Player
         the first player
@@ -836,6 +836,167 @@ class Game:
         self._env = StateEnvBitBoard(board_size=board_size)
         self._converter = StateConverter()
         self._rewards = {'tie':0, 'win':1, 'loss':-1}
+
+    def _flip_vertical(self, x):
+        """
+        Function for performing vertical flip of the board
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of vertical flip of the input bitboard
+
+        """
+
+        k1 = 0x00FF00FF00FF00FF
+        k2 = 0x0000FFFF0000FFFF
+        x = ((x >>  8) & k1) | ((x & k1) <<  8);
+        x = ((x >> 16) & k2) | ((x & k2) << 16);
+        x = ( x >> 32)       | ( x       << 32);
+        
+        return x;
+    
+    def _flip_horizontal(self, x):
+        """
+        Function for performing horizontal flip of the board
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of horizontal flip of the input bitboard
+
+        """
+
+        k1 = 0x5555555555555555
+        k2 = 0x3333333333333333
+        k4 = 0x0f0f0f0f0f0f0f0f
+        x = ((x >> 1) & k1) + ((x & k1) << 1);
+        x = ((x >> 2) & k2) + ((x & k2) << 2);
+        x = ((x >> 4) & k4) + ((x & k4) << 4);
+        
+        return x
+    
+    def _flip_diag(self, x):
+        """
+        Function for performing diagonal flip of the board
+        diagonal is line going from (1, 1) to (8, 8)
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of diagonal flip of the input bitboard
+
+        """
+        
+        k1 = 0xaa00aa00aa00aa00
+        k2 = 0xcccc0000cccc0000
+        k4 = 0xf0f0f0f00f0f0f0f
+        t  =       x ^ (x << 36) 
+        x ^= k4 & (t ^ (x >> 36))
+        t  = k2 & (x ^ (x << 18))
+        x ^=       t ^ (t >> 18) 
+        t  = k1 & (x ^ (x <<  9))
+        x ^=       t ^ (t >>  9) 
+        
+        return x
+
+    def _flip_anti_diag(self, x):
+        """
+        Function for performing anti-diagonal flip of the board
+        anti-diagonal is line going from (1, 8) to (8, 1)
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of anti-diagonal flip of the input bitboard
+
+        """
+        
+        k1 = 0x5500550055005500
+        k2 = 0x3333000033330000
+        k4 = 0x0f0f0f0f00000000
+        t  = k4 & (x ^ (x << 28))
+        x ^=       t ^ (t >> 28) 
+        t  = k2 & (x ^ (x << 14))
+        x ^=       t ^ (t >> 14) 
+        t  = k1 & (x ^ (x <<  7))
+        x ^=       t ^ (t >>  7) 
+        
+        return x
+    
+    def _rot_clock_90(self, x):
+        """
+        Function for performing 90 deg clock-wise rotation of the board
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of 90 deg clock-wise rotation of the input bitboard
+
+        """
+        
+        return self._flip_vertical(self._flip_diag(x))
+    
+    def _rot_180(self, x):
+        """
+        Function for performing 180 deg rotaion of the board
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of 180 deg rotaion of the input bitboard
+
+        """
+        
+        return self._flip_horizontal(self._flip_vertical(x))
+    
+    def _rot_anticlock_90(self, x):
+        """
+        Function for performing 90 deg anti-clockwise rotaion of the board
+        
+        Parameters:
+        ----------
+        x: int (64 bit)
+           bitboard
+
+        Returns:
+        -------
+        x: int (64 bit)
+           bitboard of 90 deg anti-clockwise rotaion of the input bitboard
+
+        """
+        
+        return self._flip_diag(self._flip_vertical(x))  
 
     def reset(self, random_assignment=True):
         """Randomly select who plays first"""
@@ -876,7 +1037,7 @@ class Game:
                             self._env.step(s, a)
             # add to the historybject
             self._hist.append([s, legal_moves, current_player, a, \
-                               next_s, next_legal_moves, next_player, 0])
+                               next_s, next_legal_moves, next_player, done, -1])
             # setup for next iteration of loop
             s = next_s.copy()
             current_player = next_player
@@ -897,6 +1058,41 @@ class Game:
 
         return winner
 
+    def create_board_reps(self, transition_list):
+        """
+        Returns a list containing transition list of each transformation of the board
+        Total of 20 representation are possible; 4 sides of the board X 5 views - normal, horizontal-flip
+        vertical - flip, diagonal flip and anti-diagonal flip
+
+        Parameters:
+        ----------
+        transition list - list containing s, legal_moves, current_player, a, next_s,
+                          next_legal_moves, next_player, done, winner
+
+        Returns:
+        -------
+        r - list of transition lists of all representations of the board
+
+        """
+
+        s, legal_moves, current_player, a, next_s,\
+        next_legal_moves, next_player, done, winner = transition_list
+        
+        r = []
+        
+        for fn_1 in [lambda x: x, self._flip_vertical, self._flip_horizontal,
+                     self._flip_diag, self._flip_anti_diag]:
+            # lambda function is for representing normal board state
+            for fn_2 in [lambda x: x, self._rot_clock_90, self._rot_180, self._rot_anticlock_90]:
+                l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], fn_2(fn_1(legal_moves)),
+                     current_player, fn_2(fn_1(a)),
+                     [fn_2(fn_1(next_s[0])), fn_2(fn_1(next_s[1])), next_s[2]],
+                     fn_2(fn_1(next_legal_moves)),
+                     next_player, done, winner]
+                r.append(l)
+
+        return r 
+        
     def record_gameplay(self, path='file.mp4'):
         """Plays a game and saves the frames as individual pngs
     
