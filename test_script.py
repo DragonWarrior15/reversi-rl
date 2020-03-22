@@ -324,38 +324,86 @@ while(0):
     'vertical_rot_anticlock_90'] 8
     """
 
+def get_board_augmentations(transition):
+    """
+    get the list of all unique transitions obtained through flipping, rotations etc
+    considering only anticlockwise rotations, the transitions are normal, normal rotation 270
+    normal rotation 180, normal rotation 90, vertical flip, vertical flip rotation 270, 
+    vertical flip rotation 180 and vertical flip rotation 90 
+
+    Parameters
+    ----------
+    transition : list
+        contains [[black bitboard, white bitboard, current player], legal moves, current player,
+                    action, [next black bitboard, next white bitboard, next player],
+                    next legal moves, next player, done, winner]
+    
+    Returns
+    -------
+    transition_list : list
+        list of augmented transitions
+    """
+    transition_list = [transition]
+    f = lambda x: conv.convert(conv.convert(x, 
+                     input_format='bitboard_single', output_format='ndarray'),
+                    input_format='ndarray', output_format='bitboard_single')
+    for f1 in [lambda x: x, np.flipud]:
+        for f2 in [lambda x: x,
+                   lambda x: np.rot90(np.rot90(np.rot90(x))),
+                   lambda x: np.rot90(np.rot90(x)),
+                   lambda x: np.rot90(x)]:
+            f_temp = lambda x: f2(f1(f(x)))
+            transition_list.append([[f_temp(transition[0][0]), f_temp(transition[0][1]), f_temp(transition[0][2])],
+                                       f_temp(transition[1]), transition[2], f_temp(transition[3]),
+                                       [f_temp(transition[4][0]), f_temp(transition[4][1]), f_temp(transition[4][2])], 
+                                       f_temp(transition[5]), transition[6], transition[7], transition[8]])
+    return transition_list
+
 # test cases
 while(1):
     print('RUNNING TEST CASES FOR BOARD AUGMENTATION FUNCTION')
     success = True
     env = StateEnvBitBoard(board_size=board_size)
     conv = StateConverter()  
+    augmentation = ['normal', 'normal rot 270', 'normal rot 180', 'normal rot 90',
+                    'vertical flip', 'vertical flip rot 270', 'vertical flip rot 180', 'vertical flip rot 90']
     ######## Case 1: custom board from a match ########
     # https://www.worldothello.org/about/world-othello-championship/woc/2017/round/5
     # Maria Serena Vecchi 13-51 Caroline Nicolas, move 53 - 54
     print('Running Case 1: Custom board from a match')
-    [s, legal_moves, current_player, a, \
-                               next_s, next_legal_moves, next_player, 0]
     base_transition = [[9055374549248, 827328404604, 1], 8011054621671425, 1, 1<<46, \
-                    [8917667160320, 71333779971196, 0], 18067175084392960, 0, 0]
-    correct_transitions = base_transition
-    f1 = lambda x: conv.convert(conv.convert(x, 
-                     input_format='bitboard_single', output_format='ndarray'),
-                    input_format='ndarray', output_format='bitboard_single')
-    for f in [lambda x: np.rot90(np.rot90(np.rot90(f1(x)))),
-              lambda x: np.rot90(np.rot90(f1(x))),
-              lambda x: np.rot90(f1(x))]:
-        correct_transitions.append([[]])
-               [[13625251641962560, 8685351176903852064, 1], 19144722266590360, 1, 1125899906842624, \
-               [13616386829463616, 8686485941623193632, 0], 567365179818000, 0, 0] + \
-               [[147519516997716992, 288238102915911966, 1], 1815056479437201920, 1, 8192, \
-               [147519516862450688, 288238103051186462, 0], 577023702795829248, 0, 0] + \
-               [[37232187733442560, 4483818335200346112, 1], 9223935539792459776, 1, 131072, \
-               [37232153306595328, 4483818369627324416, 0], 18014948266082816, 0, 0] + \
-
-
-    # do the comparisons stepwise
-    success = success & compare_boards([next_s, next_legal_moves, next_player, done], 
-                   [correct_s, \
-                        correct_legal_moves, correct_player, 0], 
-                    7)
+                    [8917667160320, 71333779971196, 0], 18067175084392960, 0, 0, 0]
+    correct_transitions = get_board_augmentations(base_transition)
+    augmented_transitions = g.create_board_reps(base_transition)
+    for i in range(len(correct_transitions)):
+        if(correct_transitions[i] != augmented_transitions[i]):
+            success = False
+            print('Case {:d} Augmentation {:s} does not match'.format(1, augmentation[i]))
+            print('Expected')
+            print(correct_transitions[i])
+            print('Got')
+            print(augmented_transitions[i])
+    
+    ######## Case 2: custom board from a match ########
+    # https://www.worldothello.org/about/world-othello-championship/woc/2017/round/5
+    # Niklas Wettergren 31-33 Brian Rose, moves 40 - 41 
+    print('Running Case 2: Custom board from a match')
+    base_transition = [[8847673277496, 4340405112184963328, 0], 4774871685931205120, 0, 1<<54, \
+                    [18058499408542776, 4340369858959180032, 1], 36239903259934790, 0, 0, 0]
+    correct_transitions = get_board_augmentations(base_transition)
+    augmented_transitions = g.create_board_reps(base_transition)
+    for i in range(len(correct_transitions)):
+        if(correct_transitions[i] != augmented_transitions[i]):
+            success = False
+            print('Case {:d} Augmentation {:s} does not match'.format(1, augmentation[i]))
+            print('Expected')
+            print(correct_transitions[i])
+            print('Got')
+            print(augmented_transitions[i])
+    
+    if(success):
+        print('Passed all test cases for board augmentation ! Congrats !')
+    else:
+        print('One or more test cases failed for board augmentation, correct code and try again !')
+    # break from the while loop
+    break
