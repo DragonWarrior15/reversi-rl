@@ -107,6 +107,7 @@ def compare_boards(s, correct_s, case_no):
 
 # test cases to check if the environment is working correctly
 while(1):
+    print('RUNNING TEST CASES FOR GAME ENVIRONMENT')
     success = True
     env = StateEnvBitBoard(board_size=board_size)
     conv = StateConverter()
@@ -253,7 +254,7 @@ while(1):
 
 
 # check time taken to play 10000 games
-if(success):
+if(0):
     total_games = 10000
     time_list = np.zeros(total_games)
     for i in tqdm(range(total_games)):
@@ -269,3 +270,139 @@ if(success):
 # record and save game
 # for i in range(6, 11):
     # g.record_gameplay('images/gameplay_random_{:d}.mp4'.format(i))
+
+
+# test cases to check if board augmentation is implemented correctly
+# first a block of code to check which transformations are redundant
+while(0):
+    x = np.arange(64, dtype=np.uint8).reshape(-1, 8)
+    transition_dict  = {
+        'normal'        : x,
+        'vertical'      : np.flipud(x).copy(),
+        'horizontal'    : np.fliplr(x).copy(),
+        'diagonal'      : x.T.copy(),
+    }
+    base_transitions = list(transition_dict.keys())
+    for k in base_transitions:
+        x = transition_dict[k]
+        transition_dict[k + '_rot_clock_90']     = np.rot90(np.rot90(np.rot90(x))).copy()
+        transition_dict[k + '_rot_180']          = np.rot90(np.rot90(x)).copy()
+        transition_dict[k + '_rot_anticlock_90'] = np.rot90(x).copy()
+
+    base_transitions = [
+        'normal',
+        'normal_rot_clock_90',
+        'normal_rot_180',
+        'normal_rot_anticlock_90',
+        'vertical',
+        'vertical_rot_clock_90',
+        'vertical_rot_180',
+        'vertical_rot_anticlock_90',
+        'horizontal',
+        'horizontal_rot_clock_90',
+        'horizontal_rot_180',
+        'horizontal_rot_anticlock_90',
+        'diagonal',
+        'diagonal_rot_clock_90',
+        'diagonal_rot_180',
+        'diagonal_rot_anticlock_90',
+    ]
+
+    remove_list = []
+    for i1 in range(len(base_transitions) - 1):
+        for i2 in range(i1+1, len(base_transitions)):
+            if((transition_dict[base_transitions[i1]] == \
+                transition_dict[base_transitions[i2]]).sum() == 64):
+                print('{:30s} {:20s}'.format(base_transitions[i1], base_transitions[i2]))
+                remove_list.append(base_transitions[i2])
+
+    base_transitions = [x for x in base_transitions if x not in remove_list]
+    print('transitions to keep', base_transitions, len(base_transitions))
+    """
+    transitions to keep ['normal', 'normal_rot_clock_90', 'normal_rot_180', 
+    'normal_rot_anticlock_90', 'vertical', 'vertical_rot_clock_90', 'vertical_rot_180', 
+    'vertical_rot_anticlock_90'] 8
+    """
+
+def get_board_augmentations(transition):
+    """
+    get the list of all unique transitions obtained through flipping, rotations etc
+    considering only anticlockwise rotations, the transitions are normal, normal rotation 270
+    normal rotation 180, normal rotation 90, vertical flip, vertical flip rotation 270, 
+    vertical flip rotation 180 and vertical flip rotation 90 
+
+    Parameters
+    ----------
+    transition : list
+        contains [[black bitboard, white bitboard, current player], legal moves, current player,
+                    action, [next black bitboard, next white bitboard, next player],
+                    next legal moves, next player, done, winner]
+    
+    Returns
+    -------
+    transition_list : list
+        list of augmented transitions
+    """
+    transition_list = []
+    fa = lambda x: conv.convert(x, input_format='bitboard_single', output_format='ndarray')
+    fb = lambda x: conv.convert(x, input_format='ndarray', output_format='bitboard_single')
+    for f1 in [lambda x: x, np.flipud]:
+        for f2 in [lambda x: x,
+                   lambda x: np.rot90(np.rot90(np.rot90(x))),
+                   lambda x: np.rot90(np.rot90(x)),
+                   lambda x: np.rot90(x)]:
+            f_temp = lambda x: fb(f2(f1(fa(x))))
+            transition_list.append([[f_temp(transition[0][0]), f_temp(transition[0][1]), transition[0][2]],
+                                       f_temp(transition[1]), transition[2], f_temp(transition[3]),
+                                       [f_temp(transition[4][0]), f_temp(transition[4][1]), transition[4][2]], 
+                                       f_temp(transition[5]), transition[6], transition[7], transition[8]])
+    return transition_list
+
+# test cases
+while(1):
+    print('RUNNING TEST CASES FOR BOARD AUGMENTATION FUNCTION')
+    success = True
+    env = StateEnvBitBoard(board_size=board_size)
+    conv = StateConverter()  
+    augmentation = ['normal', 'normal rot 270', 'normal rot 180', 'normal rot 90',
+                    'vertical flip', 'vertical flip rot 270', 'vertical flip rot 180', 'vertical flip rot 90']
+    ######## Case 1: custom board from a match ########
+    # https://www.worldothello.org/about/world-othello-championship/woc/2017/round/5
+    # Maria Serena Vecchi 13-51 Caroline Nicolas, move 53 - 54
+    print('Running Case 1: Custom board from a match')
+    base_transition = [[9055374549248, 827328404604, 1], 8011054621671425, 1, 1<<46, \
+                    [8917667160320, 71333779971196, 0], 18067175084392960, 0, 0, 0]
+    correct_transitions = get_board_augmentations(base_transition)
+    augmented_transitions = g.create_board_reps(base_transition)
+    for i in range(len(correct_transitions)):
+        if(correct_transitions[i] != augmented_transitions[i]):
+            success = False
+            print('Case {:d} Augmentation {:s} does not match'.format(1, augmentation[i]))
+            print('Expected')
+            print(correct_transitions[i])
+            print('Got')
+            print(augmented_transitions[i])
+    
+    ######## Case 2: custom board from a match ########
+    # https://www.worldothello.org/about/world-othello-championship/woc/2017/round/5
+    # Niklas Wettergren 31-33 Brian Rose, moves 40 - 41 
+    print('Running Case 2: Custom board from a match')
+    base_transition = [[8847673277496, 4340405112184963328, 0], 4774871685931205120, 0, 1<<54, \
+                    [18058499408542776, 4340369858959180032, 1], 36239903259934790, 0, 0, 0]
+    correct_transitions = get_board_augmentations(base_transition)
+    augmented_transitions = g.create_board_reps(base_transition)
+    for i in range(len(correct_transitions)):
+        if(correct_transitions[i] != augmented_transitions[i]):
+            success = False
+            print('Case {:d} Augmentation {:s} does not match'.format(1, augmentation[i]))
+            print('Expected')
+            print(correct_transitions[i])
+            print('Got')
+            print(augmented_transitions[i])
+    
+    if(success):
+        print('Passed all test cases for board augmentation ! Congrats !')
+    else:
+        print('One or more test cases failed for board augmentation, correct code and try again !')
+    # break from the while loop
+    break
