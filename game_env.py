@@ -529,6 +529,21 @@ class StateEnvBitBoard:
             t = t >> 1
         return b, w
 
+    def get_player(self, s):
+        """return the current player to play
+
+        Parameters
+        ----------
+        s : tuple
+            contains the bitbaords and player
+
+        Returns
+        -------
+        p : str
+            the current player to play
+        """
+        return 'white' if s[2] else 'black'
+
     def _get_neighbors(self, s, e):
         """Return neighbors of all set bits of input
 
@@ -999,6 +1014,17 @@ class Game:
         if(np.random.rand() < 0.5 and random_assignment):
             self._p = {0:self._p1, 1:self._p2}
 
+    def get_players_coin(self):
+        """return the dictionary telling which player is white/black
+
+        Returns
+        -------
+        p : dict
+            keys are 0,1; items are players
+        """
+        return self._p
+
+
     def play(self):
         """Play the game to the end
 
@@ -1009,6 +1035,7 @@ class Game:
         """
         # get the starting state
         s, legal_moves, current_player = self._env.reset()
+        self.reset()
         done = 0
         while (not done):
             # get the action from current player
@@ -1154,6 +1181,17 @@ class Game:
         # in the loop
         fig, axs = plt.subplots(1, 1, figsize=(8, 8), dpi=72)
         axs.axis('off')
+        title_line2 = 'white: ' + \
+            str(type(self._p[1])).replace('players.','').replace('<','').replace('>','') + \
+                      ' | black: ' + \
+          str(type(self._p[0])).replace('players.','').replace('<','').replace('>','')
+        if(winner == 1):
+            axs.set_title('winner:white\n' + title_line2)
+        elif(winner == 0):
+            axs.set_title('winner:black\n' + title_line2)
+        else:
+            axs.set_title('winner:tie\n' + title_line2)
+
         # add scatter points
         # axs.scatter([0, 1, 0, 1], [0, 1, 1, 0])
         ellipse_patch_list = []
