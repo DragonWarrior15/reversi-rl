@@ -1154,8 +1154,6 @@ class Game:
         frames_per_anim = len(transition_color_list) - 1
         color_array = np.zeros((self._size, self._size), np.uint8)
         alpha_array = np.zeros((self._size, self._size), np.uint8)
-        # reset the game
-        self.reset()
         # play a full game
         winner = self.play()
         # use the history object to save to game
