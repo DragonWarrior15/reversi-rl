@@ -539,10 +539,29 @@ class StateEnvBitBoard:
 
         Returns
         -------
-        p : str
-            the current player to play
+        p : int
         """
-        return 'white' if s[2] else 'black'
+        return s[2]
+
+    def get_winner(self, s):
+        """Get the winner based on number of coins
+
+        Parameters
+        ----------
+        s : tuple
+            contains the bitboards representing the game state
+
+        Returns
+        -------
+        w : int
+            the winner, 1 if while, 0 if black and -1 if tie
+        """
+        b, w = self.count_coins(s)
+        if(b == w):
+            return -1
+        if(b > w):
+            return 0
+        return 1
 
     def _get_neighbors(self, s, e):
         """Return neighbors of all set bits of input
@@ -1063,14 +1082,7 @@ class Game:
             legal_moves = next_legal_moves
 
         # determine the winner
-        b, w = self._env.count_coins(s)
-        if(b > w):
-            winner = 0
-        elif(w > b):
-            winner = 1
-        else:
-            # tie
-            winner = -1
+        winner = self._env.get_winner(s)
 
         # modify the history object
         self._hist[-1][-1] = winner
@@ -1293,3 +1305,66 @@ class Game:
         os.system('ffmpeg -y -framerate {:d} -pattern_type sequence -i "{:s}/img_%05d.png" \
           -c:v libx264 -r {:d} -pix_fmt yuv420p -vf "crop=floor(iw/2)*2:floor(ih/2)*2" {:s}'\
           .format(int(1.5 * frames_per_anim), frames_dir, int(1.5 * frames_per_anim), path))
+
+
+
+def get_set_bits_list(x):
+    """returns a list containing the positions of set bits
+
+    Parameters
+    ----------
+    x : int
+        the int for which set bits from binary representation 
+        to return
+
+    Returns
+    -------
+    l : list
+        list with positions of set bits, the leftmost bit is position 0
+    """
+    idx = 0
+    """idx represents position from end
+    hence bitboard can be prepared by simply shifting 1
+    by the idx"""
+    l = []
+    while(x):
+        if(x & 1):
+            l.append(idx)
+        x = x >> 1
+        idx += 1
+    return l
+
+def get_total_set_bits(x):
+    """returns the total count of set bits in the integer
+
+    Parameters
+    ----------
+    x : int
+
+    Returns
+    -------
+    t : int
+        the total number of set bits in x
+    """
+    t = 0
+    while(x):
+        t += x & 1
+        x = x >> 1
+    return t
+
+def get_random_move_from_list(move_list):
+    """Select a random move from a move_list containing
+    positions of moves to select from
+
+    Parameters
+    ----------
+    move_list : list
+        list containing positions of moves
+
+    Returns
+    -------
+    m : int
+        position from right hand side where to play the coin
+    """
+    return move_list[np.random.randint(len(move_list))]
+
