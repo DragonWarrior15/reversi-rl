@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Ellipse
 import shutil
 from tqdm import tqdm
+import ctypes
 
 class StateEnv:
     """Base class that implements all the rules of the game
@@ -516,18 +517,7 @@ class StateEnvBitBoard:
         b : int
             count of black coins
         """
-        w, b = 0, 0
-        # count black coins
-        t = s[0]
-        while(t):
-            b += (t & 1)
-            t = t >> 1
-        # count white coins
-        t = s[1]
-        while(t):
-            w += (t & 1)
-            t = t >> 1
-        return b, w
+        return get_total_set_bits(s[0]), get_total_set_bits(s[1])
 
     def get_player(self, s):
         """return the current player to play
@@ -827,6 +817,41 @@ class StateEnvBitBoard:
             return [board_p, board_notp, p]
         else:
             return [board_notp, board_p, p]
+
+class StateEnvBitBoardC(StateEnvBitBoard):
+    """implementation of parts of StateEnvBitBoard with ctypes and C"""
+    def __init__(self, board_size=8):
+        StateEnvBitBoard.__init__(self, board_size=board_size)
+        # get the dll/so or shared library file
+        self._cfns = ctypes.CDLL('cfns.dll')
+        # assign data types so that ctypes can match at runtime and flag error
+        self._cfns.get_next_board.argtypes = \
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_int,
+             ctypes.c_ulonglong, ctypes.POINTER(ctypes.c_ulonglong),
+             ctypes.POINTER(ctypes.c_ulonglong))
+        # to enforce returning a ulonglong, we will pass the result
+        # by reference
+        self._cfns.legal_moves_helper.argtypes = \
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_int,
+             ctypes.POINTER(ctypes.c_ulonglong))
+
+    def _get_next_board(self, s, a):
+        ns0 = ctypes.c_ulonglong()
+        ns1 = ctypes.c_ulonglong()
+        np = ctypes.c_int()
+        self._cfns.get_next_board(ctypes.c_ulonglong(s[0]), 
+                                  ctypes.c_ulonglong(s[1]), 
+                             ctypes.c_int(s[2]), ctypes.c_ulonglong(a),
+                             ctypes.byref(ns0), ctypes.byref(ns1))
+        return [int(ns0.value), int(ns1.value), s[2]]
+
+    def _legal_moves_helper(self, s):
+        m = ctypes.c_ulonglong()
+        self._cfns.legal_moves_helper(ctypes.c_ulonglong(s[0]), 
+                                      ctypes.c_ulonglong(s[1]), 
+                                      ctypes.c_int(s[2]), ctypes.byref(m))
+        return m.value
+
 
 class Game:
     """This class handles the complete lifecycle of a game,
@@ -1305,7 +1330,6 @@ class Game:
         os.system('ffmpeg -y -framerate {:d} -pattern_type sequence -i "{:s}/img_%05d.png" \
           -c:v libx264 -r {:d} -pix_fmt yuv420p -vf "crop=floor(iw/2)*2:floor(ih/2)*2" {:s}'\
           .format(int(1.5 * frames_per_anim), frames_dir, int(1.5 * frames_per_anim), path))
-
 
 
 def get_set_bits_list(x):

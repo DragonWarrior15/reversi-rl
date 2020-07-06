@@ -1,4 +1,5 @@
-from game_env import StateEnv, Game, StateEnvBitBoard, StateConverter
+from game_env import (StateEnv, Game, StateEnvBitBoard, StateConverter, 
+                            StateEnvBitBoardC)
 from players import RandomPlayer
 import numpy as np
 import time

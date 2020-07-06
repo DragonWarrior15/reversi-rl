@@ -1,7 +1,8 @@
 """This module holds all the players that can interact with the othello board"""
 import numpy as np
-from game_env import StateEnvBitBoard, get_set_bits_list, \
-                get_total_set_bits, get_random_move_from_list
+from game_env import (StateEnvBitBoard, get_set_bits_list,
+                get_total_set_bits, get_random_move_from_list,
+                StateEnvBitBoardC)
 from mcts import MCTS
 
 class Player:

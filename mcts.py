@@ -53,13 +53,16 @@ class Node:
         self.legal_moves = legal_moves
         # convert the 64 bit legal moves into a set of positions
         # for fast use later
-        self.legal_moves_set = set(get_set_bits_list(legal_moves))
+        self.legal_moves_set = get_set_bits_list(legal_moves)
+        np.random.shuffle(self.legal_moves_set)
         # to compare whether all children have been added or not
         self.total_legal_moves = get_total_set_bits(legal_moves)
         self.w = 0
         self.n = 0
         self.N = 0
         self.children = []
+        # since we have shuffled the legal_moves_set, we can use total_children
+        # as the idx from where we have to pick the next unexplored move
         self.total_children = 0
         self.move = m
         self.terminal = terminal
@@ -186,7 +189,8 @@ class MCTS:
             if(not node.terminal):
                 """first get a random move from the moves which have not 
                 been added to the mcts tree yet"""
-                m = self.get_not_added_move(node)
+                # m = self.get_not_added_move(node)
+                m = node.legal_moves_set[node.total_children]
                 # play the game and add new node to tree (node list)
                 next_state, next_legal_moves, _, done = \
                                     self._env.step(node.state, 1<<m)
