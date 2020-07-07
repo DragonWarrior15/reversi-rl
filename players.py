@@ -187,7 +187,23 @@ class MiniMaxPlayer(Player):
         # and might fail later in the game when board is highly occupied
         # return the negative since we want to minimize opponents freedom
         return -get_total_set_bits(legal_moves)
-        
+
+class MiniMaxPlayerC(MiniMaxPlayer):
+    """Extends the MiniMaxPlayer to implement a pure C based move 
+    generation function"""
+    def move(self, s, legal_moves):
+        """Select a move randomly, given the board state and the
+        set of legal moves
+
+        Parameters
+        ----------
+        s : tuple
+            contains black and white bitboards and current player
+        legal_moves : int (64 bit)
+            legal states are set to 1
+        """
+        return 0        
+
 
 class MCTSPlayer(Player):
     """This agent uses MCTS to decide which move to play
@@ -206,8 +222,6 @@ class MCTSPlayer(Player):
             size of game board
         """
         Player.__init__(self, board_size=board_size)
-        # an instance of the environment
-        self._env = StateEnvBitBoard(board_size=board_size)
 
     def move(self, s, legal_moves):
         """Select a move randomly, given the board state and the

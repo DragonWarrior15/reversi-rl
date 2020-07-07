@@ -447,7 +447,7 @@ class StateEnvBitBoard:
         starter_b = 34628173824 # check binary arranged as 8x8 to see why
         starter_w = 68853694464 # check binary arranged as 8x8 to see why
         player = 1 # white to start
-        starter_board = [starter_b, starter_w, player]
+        starter_board = [starter_b, starter_w, player].copy()
         legal_moves = self._legal_moves_helper(starter_board)
         
         return [starter_board, legal_moves, player]
@@ -824,33 +824,49 @@ class StateEnvBitBoardC(StateEnvBitBoard):
         StateEnvBitBoard.__init__(self, board_size=board_size)
         # get the dll/so or shared library file
         self._cfns = ctypes.CDLL('cfns.dll')
-        # assign data types so that ctypes can match at runtime and flag error
-        self._cfns.get_next_board.argtypes = \
-            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_int,
+        """We skip the argument checking for a slight bump in speed
+        # assign arguments for the step function
+        # we use void function in C and pass the pointers to store
+        # the returned objects so that the data type is maintained by python
+        self._cfns.step.argtypes = \
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_uint,
              ctypes.c_ulonglong, ctypes.POINTER(ctypes.c_ulonglong),
-             ctypes.POINTER(ctypes.c_ulonglong))
+             ctypes.POINTER(ctypes.c_ulonglong), 
+             ctypes.POINTER(ctypes.c_ulonglong),
+             ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint))
         # to enforce returning a ulonglong, we will pass the result
         # by reference
         self._cfns.legal_moves_helper.argtypes = \
-            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_int,
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_uint,
              ctypes.POINTER(ctypes.c_ulonglong))
+        """
 
-    def _get_next_board(self, s, a):
+    def reset(self):
+        starter_b = 34628173824 # check binary arranged as 8x8 to see why
+        starter_w = 68853694464 # check binary arranged as 8x8 to see why
+        player = 1 # white to start
+        starter_board = [starter_b, starter_w, player].copy()
+        # setup to call legal_moves_helper
+        m = ctypes.c_ulonglong()
+        self._cfns.legal_moves_helper(ctypes.c_ulonglong(starter_b), 
+                                      ctypes.c_ulonglong(starter_w), 
+                                      ctypes.c_uint(player), ctypes.byref(m))
+        return [starter_board, m.value, player]
+
+    def step(self, s, a):
         ns0 = ctypes.c_ulonglong()
         ns1 = ctypes.c_ulonglong()
-        np = ctypes.c_int()
-        self._cfns.get_next_board(ctypes.c_ulonglong(s[0]), 
-                                  ctypes.c_ulonglong(s[1]), 
-                             ctypes.c_int(s[2]), ctypes.c_ulonglong(a),
-                             ctypes.byref(ns0), ctypes.byref(ns1))
-        return [int(ns0.value), int(ns1.value), s[2]]
+        np = ctypes.c_uint()
+        legal_moves = ctypes.c_ulonglong()
+        done = ctypes.c_uint()
 
-    def _legal_moves_helper(self, s):
-        m = ctypes.c_ulonglong()
-        self._cfns.legal_moves_helper(ctypes.c_ulonglong(s[0]), 
-                                      ctypes.c_ulonglong(s[1]), 
-                                      ctypes.c_int(s[2]), ctypes.byref(m))
-        return m.value
+        self._cfns.step(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]),
+                        ctypes.c_uint(s[2]), ctypes.c_ulonglong(a),
+                        ctypes.byref(ns0), ctypes.byref(ns1),
+                        ctypes.byref(legal_moves), ctypes.byref(np),
+                        ctypes.byref(done))
+        return [ns0.value, ns1.value, np.value], \
+                    legal_moves.value, np.value, done.value
 
 
 class Game:
@@ -892,7 +908,7 @@ class Game:
         self._p1 = player1
         self._p2 = player2
         self._size = board_size
-        self._env = StateEnvBitBoard(board_size=board_size)
+        self._env = StateEnvBitBoardC(board_size=board_size)
         self._converter = StateConverter()
         self._rewards = {'tie':0, 'win':1, 'loss':-1}
 
@@ -1360,6 +1376,7 @@ def get_set_bits_list(x):
 
 def get_total_set_bits(x):
     """returns the total count of set bits in the integer
+    we use Brian Kernighan's method here
 
     Parameters
     ----------
@@ -1372,8 +1389,8 @@ def get_total_set_bits(x):
     """
     t = 0
     while(x):
-        t += x & 1
-        x = x >> 1
+        x = x & (x-1)
+        t += 1
     return t
 
 def get_random_move_from_list(move_list):

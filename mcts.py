@@ -2,7 +2,7 @@
 performing an iteration of monte carlo tree search"""
 import numpy as np
 from game_env import StateEnvBitBoard, get_total_set_bits, \
-                get_set_bits_list, get_random_move_from_list
+                get_set_bits_list, get_random_move_from_list, StateEnvBitBoardC
 from collections import deque
 
 class Node:
@@ -120,7 +120,7 @@ class MCTS:
         """
         self._c = c
         self._node_list = [Node(s.copy(), legal_moves)]
-        self._env = StateEnvBitBoard(board_size)
+        self._env = StateEnvBitBoardC(board_size)
 
     def get_not_added_move(self, node):
         """randomly select a move from the ones not played yet

@@ -1,10 +1,21 @@
 // run this command to build the shared library
 // gcc -fPIC -shared -o cfns.dll cfns.c
 // #include <stdio.h>
-void get_next_board(unsigned long long s0, unsigned long long s1, 
-                    int p, unsigned long long a,
-                    unsigned long long* ns0, unsigned long long* ns1){
 
+unsigned int get_set_bits_count(unsigned long long s){
+    /*Brian Kernighan's method goes through as many iterations as 
+    there are set bits. So if we have a 32-bit word with only the 
+    high bit set, then it will only go once through the loop.*/
+    unsigned int c; // c accumulates the total bits set in s
+    for (c = 0; s; c++){
+        s &= s - 1; // clear the least significant bit set
+    }
+    return c;
+}
+
+void get_next_board(unsigned long long s0, unsigned long long s1, 
+                    unsigned int p, unsigned long long a,
+                    unsigned long long* ns0, unsigned long long* ns1){
     /*Determine the updated bitboard after performing action a
     using player passed to the function
 
@@ -22,7 +33,7 @@ void get_next_board(unsigned long long s0, unsigned long long s1,
         updated bitboards
     */
     unsigned long long board_p = s0, board_notp = s1;
-    if(p == 1){
+    if(p){
         board_p = s1; board_notp = s0;
     }
     // keep a global updates master
@@ -136,7 +147,7 @@ void get_next_board(unsigned long long s0, unsigned long long s1,
     board_p = board_p | update_master | a;
     board_notp = board_notp - update_master;
     // return
-    if(p == 0){
+    if(!p){
         *ns0 = board_p; *ns1 = board_notp;
     }
     else{
@@ -146,7 +157,7 @@ void get_next_board(unsigned long long s0, unsigned long long s1,
 
 
 void legal_moves_helper(unsigned long long s0, unsigned long long s1,
-                          int p, unsigned long long* moves){
+                         unsigned int p, unsigned long long* moves){
     /*Get the bitboard for legal moves of given player
 
     Parameters
@@ -160,7 +171,7 @@ void legal_moves_helper(unsigned long long s0, unsigned long long s1,
         bitboard representing the legal moves for player p
     */
     unsigned long long board_p = s0, board_notp = s1;
-    if(p == 1){
+    if(p){
         board_p = s1; board_notp = s0;
     }
     // keep a global updates master
@@ -238,4 +249,66 @@ void legal_moves_helper(unsigned long long s0, unsigned long long s1,
     // return final legal moves
     // return m;
     *moves = m;
+}
+
+
+void step(unsigned long long s0, unsigned long long s1, unsigned int p,
+          unsigned long long a, unsigned long long* ns0,
+          unsigned long long* ns1, unsigned long long* legal_moves,
+          unsigned int* np, unsigned int* done){
+    /*Play a move on the board at the given action location
+    and also check for terminal cases, no moves possible etc
+
+    Parameters
+    ----------
+    s : tuple
+        current board state defined by bitboards for black, white coins
+        and the current player to play
+    a : int (64 bit)
+        the bit determining the position to play is set to 1
+
+    Returns
+    -------
+    s_next : list
+        updated bitboards for black, white coins, and next player
+    legal_moves : bitboard
+        legal moves for the next player
+    next_player : int
+        whether 1 to play next or 0
+    done : int
+        1 if the game terminates, else 0
+    */
+    *done = 0;
+    // variable to track if the game has ended
+    // rewards will be determined by the game class
+    get_next_board(s0, s1, p, a, ns0, ns1);
+    // change the player before checking for legal moves
+    *np = 1;
+    if(p){
+        *np = 0;
+    }
+    legal_moves_helper(*ns0, *ns1, *np, legal_moves);
+    // check if legal moves are available
+    if(!*legal_moves){
+        // either the current player cannot play, or the game has ended
+        // effectively checks if ns0|ns1 has all set bits
+        if(!(~(*ns0 | *ns1))){
+            // game has ended
+            *done = 1;
+        }   
+        else{
+            // current player cannot play, switch player
+            *np = 1 - *np;
+            // check for legal moves again
+            legal_moves_helper(*ns0, *ns1, *np, legal_moves);
+            if(!*legal_moves){
+                // no moves are possible, game is over
+                *done = 1;
+            }
+            // else original player will play next and opposite player
+            // will pass the turn, nothing to modify
+        }
+    }
+    // return
+    // return s_next, legal_moves, s_next[2], done
 }
