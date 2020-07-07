@@ -1,8 +1,8 @@
 // run this command to build the shared library
-// gcc -fPIC -shared -o cfns.dll cfns.c
+// gcc -fPIC -shared -o game_env_fn.dll game_env_fn.c
 // #include <stdio.h>
 
-unsigned int get_set_bits_count(unsigned long long s){
+unsigned int get_total_set_bits(unsigned long long s){
     /*Brian Kernighan's method goes through as many iterations as 
     there are set bits. So if we have a 32-bit word with only the 
     high bit set, then it will only go once through the loop.*/
@@ -11,6 +11,20 @@ unsigned int get_set_bits_count(unsigned long long s){
         s &= s - 1; // clear the least significant bit set
     }
     return c;
+}
+
+void get_set_bits_array(unsigned long long s, 
+                        int arr[]){
+    /*modifies the array to store individual set bits
+    arr-> array to modify and must be initialized to the required
+    length beforehand (this cannot be dynamic)*/
+    unsigned int count = 0, idx = 0;
+    while(s){
+        if(s&1){
+            arr[idx] = count; idx++;
+        }
+        s = s >> 1; count++;
+    }
 }
 
 void get_next_board(unsigned long long s0, unsigned long long s1, 

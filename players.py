@@ -4,6 +4,7 @@ from game_env import (StateEnvBitBoard, get_set_bits_list,
                 get_total_set_bits, get_random_move_from_list,
                 StateEnvBitBoardC)
 from mcts import MCTS
+import ctypes
 
 class Player:
     """The base class for player. All common attributes/functions go here
@@ -103,7 +104,7 @@ class MiniMaxPlayer(Player):
         # set the depth
         self._depth = max(depth, 0)
         # an instance of the environment
-        self._env = StateEnvBitBoard(board_size=board_size)
+        self._env = StateEnvBitBoardC(board_size=board_size)
 
     def move(self, s, legal_moves, current_depth=0, get_max=1,
              alpha=-np.inf, beta=np.inf):
@@ -135,13 +136,7 @@ class MiniMaxPlayer(Player):
         if(current_depth == 0):
             self._player = self._env.get_player(s)
         # get the indices of the legal moves
-        move_list = []
-        idx = 0
-        while(legal_moves):
-            if(legal_moves & 1):
-                move_list.append(idx)
-            legal_moves = legal_moves >> 1
-            idx += 1
+        move_list = get_set_bits_list(legal_moves)
         h_list = []
         for m in move_list:
             s_next, legal_moves, _, done = self._env.step(s, 1 << m)
@@ -191,6 +186,20 @@ class MiniMaxPlayer(Player):
 class MiniMaxPlayerC(MiniMaxPlayer):
     """Extends the MiniMaxPlayer to implement a pure C based move 
     generation function"""
+
+    def __init__(self, board_size=8, depth=1):
+        """Initializer
+
+        Parameters
+        ----------
+        board_size : int
+            size of game board
+        depth : int
+            the depth to look ahead for best moves, >= 1
+        """
+        MiniMaxPlayer.__init__(self, board_size=board_size, depth=depth)
+        self._env = ctypes.CDLL('minimax.dll')
+
     def move(self, s, legal_moves):
         """Select a move randomly, given the board state and the
         set of legal moves
@@ -202,26 +211,20 @@ class MiniMaxPlayerC(MiniMaxPlayer):
         legal_moves : int (64 bit)
             legal states are set to 1
         """
-        return 0        
+        """for C, alpha and beta cannot be passed as inf as it requires more
+        dependencies to be installed, hence we will pass the max and min
+        value based on our judgement
+        for a heuristic based on number of moves, alpha, beta can be -+64
+        """
+        m = self._env.move(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]), 
+              ctypes.c_ulonglong(legal_moves), ctypes.c_uint(0),
+              ctypes.c_uint(1), ctypes.c_int(-64), ctypes.c_int(+64), ctypes.c_uint(s[2]),
+              ctypes.c_uint(self._depth))
+        return 1 << m
 
 
 class MCTSPlayer(Player):
-    """This agent uses MCTS to decide which move to play
-
-    Attributes
-    _env : StateEnvBitBoard
-        instance of environment to allow exploration of next states
-    """
-
-    def __init__(self, board_size=8):
-        """Initializer
-
-        Parameters
-        ----------
-        board_size : int
-            size of game board
-        """
-        Player.__init__(self, board_size=board_size)
+    """This agent uses MCTS to decide which move to play"""
 
     def move(self, s, legal_moves):
         """Select a move randomly, given the board state and the

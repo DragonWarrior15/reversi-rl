@@ -823,7 +823,7 @@ class StateEnvBitBoardC(StateEnvBitBoard):
     def __init__(self, board_size=8):
         StateEnvBitBoard.__init__(self, board_size=board_size)
         # get the dll/so or shared library file
-        self._cfns = ctypes.CDLL('cfns.dll')
+        self._cfns = ctypes.CDLL('game_env_fn.dll')
         """We skip the argument checking for a slight bump in speed
         # assign arguments for the step function
         # we use void function in C and pass the pointers to store
