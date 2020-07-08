@@ -14,11 +14,20 @@ int get_least_significant_set_bit(unsigned long long s){
     return 0;
 }
 
-int board_heuristics(unsigned long long legal_moves, unsigned int get_max){
-    if(get_max){
-        return get_total_set_bits(legal_moves);
+int board_heuristics(unsigned long long legal_moves, unsigned int get_max,
+                     unsigned long long s0, unsigned long long s1,
+                     unsigned int self_player){
+    // return total coins in next state
+    unsigned int b = get_total_set_bits(s0);
+    unsigned int w = get_total_set_bits(s1);
+    if(self_player){
+        return w - b;
     }
-    return -get_total_set_bits(legal_moves);
+    return b - w;
+    // if(get_max){
+        // return get_total_set_bits(legal_moves);
+    // }
+    // return -get_total_set_bits(legal_moves);
 }
 
 int move(unsigned long long s0, unsigned long long s1, 
@@ -38,7 +47,8 @@ int move(unsigned long long s0, unsigned long long s1,
     unsigned int np, done, i, j;
     // get the legal moves
     unsigned int l = get_total_set_bits(legal_moves);
-    unsigned long long h_list[l]; int moves[l];
+    int h_list[l], moves[l];
+    for(int i = 0; i < l; i++){h_list[i] = 0;}
     // assign the individual moves to moves[l]
     get_set_bits_array(legal_moves, moves);
     for(i=0; i < l; i++){
@@ -51,7 +61,8 @@ int move(unsigned long long s0, unsigned long long s1,
                              1-get_max, alpha, beta, np, max_depth,
                              self_player);
         }else{
-            h_list[i] = board_heuristics(legal_moves, get_max);
+            h_list[i] = board_heuristics(legal_moves, get_max,
+                                         ns0, ns1, self_player);
         }
         // adjust alpha and beta
         if(get_max){
