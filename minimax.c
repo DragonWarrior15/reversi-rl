@@ -14,14 +14,17 @@ int get_least_significant_set_bit(unsigned long long s){
     return 0;
 }
 
-int board_heuristics(unsigned long long legal_moves){
+int board_heuristics(unsigned long long legal_moves, unsigned int get_max){
+    if(get_max){
+        return get_total_set_bits(legal_moves);
+    }
     return -get_total_set_bits(legal_moves);
 }
 
 int move(unsigned long long s0, unsigned long long s1, 
           unsigned long long legal_moves, unsigned int current_depth,
           unsigned int get_max, int alpha, int beta, unsigned int player,
-          unsigned int max_depth){
+          unsigned int max_depth, unsigned int self_player){
     /*
     see the MinimaxPlayer in players.py for the documentation
     s0-> black bitboard, s1->white bitboard,
@@ -31,7 +34,7 @@ int move(unsigned long long s0, unsigned long long s1,
     player-> current player to play, max_depth-> max depth for recursion
     */
     // some variable definitions
-    unsigned long long ns0, ns1, nlegal_moves;
+    unsigned long long ns0, ns1, nlegal_moves, m_uint64;
     unsigned int np, done, i, j;
     // get the legal moves
     unsigned int l = get_total_set_bits(legal_moves);
@@ -40,13 +43,15 @@ int move(unsigned long long s0, unsigned long long s1,
     get_set_bits_array(legal_moves, moves);
     for(i=0; i < l; i++){
         // play the move in current state
-        step(s0, s1, player, 1<<moves[i], &ns0, &ns1, &nlegal_moves,
+        m_uint64 = 1; m_uint64 = m_uint64 << moves[i];
+        step(s0, s1, player, m_uint64, &ns0, &ns1, &nlegal_moves,
              &np, &done);
         if((current_depth < max_depth) && !done){
             h_list[i] = move(ns0, ns1, nlegal_moves, current_depth+1,
-                             1-get_max, alpha, beta, np, max_depth);
+                             1-get_max, alpha, beta, np, max_depth,
+                             self_player);
         }else{
-            h_list[i] = board_heuristics(legal_moves);
+            h_list[i] = board_heuristics(legal_moves, get_max);
         }
         // adjust alpha and beta
         if(get_max){

@@ -145,7 +145,8 @@ class MiniMaxPlayer(Player):
                                         current_depth+1, 1-get_max,
                                         alpha,beta))
             else:
-                h_list.append(self._board_heuristics(legal_moves))
+                h_list.append(self._board_heuristics(legal_moves),
+                              get_max)
             # adjust alpha and beta
             # print(current_depth, alpha, beta, h_list[-1], 
                   # len(move_list), m, get_max)
@@ -164,7 +165,7 @@ class MiniMaxPlayer(Player):
             return beta
         
 
-    def _board_heuristics(self, legal_moves):
+    def _board_heuristics(self, legal_moves, get_max):
         """Get a number representing the goodness of the board state
         here, we evaluate that by counting how many moves can be played
 
@@ -181,6 +182,8 @@ class MiniMaxPlayer(Player):
         # this function uses how many moves are available
         # and might fail later in the game when board is highly occupied
         # return the negative since we want to minimize opponents freedom
+        if(get_max):
+            return get_total_set_bits(legal_moves)
         return -get_total_set_bits(legal_moves)
 
 class MiniMaxPlayerC(MiniMaxPlayer):
@@ -218,8 +221,9 @@ class MiniMaxPlayerC(MiniMaxPlayer):
         """
         m = self._env.move(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]), 
               ctypes.c_ulonglong(legal_moves), ctypes.c_uint(0),
-              ctypes.c_uint(1), ctypes.c_int(-64), ctypes.c_int(+64), ctypes.c_uint(s[2]),
-              ctypes.c_uint(self._depth))
+              ctypes.c_uint(1), ctypes.c_int(-64), ctypes.c_int(+64), 
+              ctypes.c_uint(s[2]), ctypes.c_uint(self._depth), 
+              ctypes.c_uint(s[2]))
         return 1 << m
 
 
@@ -271,7 +275,6 @@ class MCTSPlayerC(Player):
             bitboard representing position to play
         """
         # train mcts and get the move
-        print('lol')
         m = self._env.move(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]), 
                     ctypes.c_uint(s[2]), ctypes.c_ulonglong(legal_moves), 
                     ctypes.c_uint(100))
