@@ -246,3 +246,33 @@ class MCTSPlayer(Player):
         mcts = MCTS(s, legal_moves, board_size=self._size)
         mcts.train()
         return mcts.select_move()
+
+
+class MCTSPlayerC(Player):
+    """This agent uses MCTS C implementation to decide which move to play"""
+    def __init__(self, board_size=8):
+        Player.__init__(self, board_size=board_size)
+        self._env = ctypes.CDLL('mcts.dll')
+
+    def move(self, s, legal_moves):
+        """Select a move randomly, given the board state and the
+        set of legal moves
+
+        Parameters
+        ----------
+        s : tuple
+            contains black and white bitboards and current player
+        legal_moves : int (64 bit)
+            legal states are set to 1
+
+        Returns
+        -------
+        m : int (64 bit)
+            bitboard representing position to play
+        """
+        # train mcts and get the move
+        print('lol')
+        m = self._env.move(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]), 
+                    ctypes.c_uint(s[2]), ctypes.c_ulonglong(legal_moves), 
+                    ctypes.c_uint(100))
+        return 1 << m

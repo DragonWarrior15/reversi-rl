@@ -326,3 +326,13 @@ void step(unsigned long long s0, unsigned long long s1, unsigned int p,
     // return
     // return s_next, legal_moves, s_next[2], done
 }
+
+int get_winner(unsigned long long s0, unsigned long long s1){
+    /*given s0 and s1, the black and white bitboards, return
+    0 if black wins, 1 if white wins and -1 if tie */
+    unsigned int b = get_total_set_bits(s0);
+    unsigned int w = get_total_set_bits(s1);
+    if(b == w){return -1;}
+    if(b > w){return 0;}
+    return 1;
+}
