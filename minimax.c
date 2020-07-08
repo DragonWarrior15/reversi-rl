@@ -17,7 +17,7 @@ int get_least_significant_set_bit(unsigned long long s){
 int board_heuristics(unsigned long long legal_moves, unsigned int get_max,
                      unsigned long long s0, unsigned long long s1,
                      unsigned int self_player){
-    // return total coins in next state
+    // return difference in total coins in next state
     unsigned int b = get_total_set_bits(s0);
     unsigned int w = get_total_set_bits(s1);
     if(self_player){
@@ -75,7 +75,7 @@ int move(unsigned long long s0, unsigned long long s1,
     // return according to the depth
     if(!current_depth){
         int h_max = h_list[0], idx=0;
-        for(j = 1; j < l; j++){
+        for(j = 1; j < i; j++){
             if(h_list[j] > h_max){
                 h_max = h_list[j]; idx=j;
             }
