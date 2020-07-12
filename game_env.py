@@ -938,7 +938,7 @@ class Game:
     _hist : list
         stores all the state transitions
         [current board, current legal moves, current player, action,
-         next board, next legal moves, next player, done, reward]
+         done, reward]
     """
     def __init__(self, player1, player2, board_size=8):
         """Initialize the game with the two specified players
@@ -1134,7 +1134,7 @@ class Game:
         return self._p
 
 
-    def play(self):
+    def play(self, record=False):
         """Play the game to the end
 
         Returns
@@ -1165,8 +1165,7 @@ class Game:
             next_s, next_legal_moves, next_player, done = \
                             self._env.step(s, a)
             # add to the historybject
-            self._hist.append([s, legal_moves, current_player, a, \
-                               next_s, next_legal_moves, next_player, done, -1])
+            self._hist.append([s, legal_moves, current_player, a, done, -1])
 
             # setup for next iteration of loop
             s = next_s.copy()
@@ -1180,7 +1179,8 @@ class Game:
         self._hist[-1][-1] = winner
 
         # add game data to buffer agen buffers
-        self.game_add_buffer()
+        if(record):
+            self.game_add_buffer()
 
         return winner
 
@@ -1218,16 +1218,16 @@ class Game:
 
         Parameters:
         ----------
-        transition list - list containing s, legal_moves, current_player, a, next_s,
-                          next_legal_moves, next_player, done, winner
+        transition list - list containing s, legal_moves, current_player, a, 
+                            done, winner
 
         Returns:
         -------
         r - list of transition lists of all representations of the board
 
         """
-        s, legal_moves, current_player, a, next_s,\
-        next_legal_moves, next_player, done, winner = transition_list
+        s, legal_moves, current_player, a,\
+                        done, winner = transition_list
         
         r = []
         
@@ -1236,9 +1236,7 @@ class Game:
             for fn_2 in [lambda x: x, self._rot_clock_90, self._rot_180, self._rot_anticlock_90]:
                 l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], fn_2(fn_1(legal_moves)),
                      current_player, fn_2(fn_1(a)),
-                     [fn_2(fn_1(next_s[0])), fn_2(fn_1(next_s[1])), next_s[2]],
-                     fn_2(fn_1(next_legal_moves)),
-                     next_player, done, winner]
+                     done, winner]
                 r.append(l)
 
         return r

@@ -355,8 +355,7 @@ def get_board_augmentations(transition):
             f_temp = lambda x: fb(f2(f1(fa(x))))
             transition_list.append([[f_temp(transition[0][0]), f_temp(transition[0][1]), transition[0][2]],
                                        f_temp(transition[1]), transition[2], f_temp(transition[3]),
-                                       [f_temp(transition[4][0]), f_temp(transition[4][1]), transition[4][2]], 
-                                       f_temp(transition[5]), transition[6], transition[7], transition[8]])
+                                        transition[4], transition[5]])
     return transition_list
 
 # test cases
@@ -372,7 +371,7 @@ while(1):
     # Maria Serena Vecchi 13-51 Caroline Nicolas, move 53 - 54
     print('Running Case 1: Custom board from a match')
     base_transition = [[9055374549248, 827328404604, 1], 8011054621671425, 1, 1<<46, \
-                    [8917667160320, 71333779971196, 0], 18067175084392960, 0, 0, 0]
+                     0, 0]
     correct_transitions = get_board_augmentations(base_transition)
     augmented_transitions = g.create_board_reps(base_transition)
     for i in range(len(correct_transitions)):
@@ -389,7 +388,7 @@ while(1):
     # Niklas Wettergren 31-33 Brian Rose, moves 40 - 41 
     print('Running Case 2: Custom board from a match')
     base_transition = [[8847673277496, 4340405112184963328, 0], 4774871685931205120, 0, 1<<54, \
-                    [18058499408542776, 4340369858959180032, 1], 36239903259934790, 0, 0, 0]
+                    0, 0]
     correct_transitions = get_board_augmentations(base_transition)
     augmented_transitions = g.create_board_reps(base_transition)
     for i in range(len(correct_transitions)):
