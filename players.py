@@ -143,21 +143,18 @@ class RandomPlayer(Player):
         # by the idx
         return 1 << move_list[0]
 
-class Agent():
-    """Base class for all agents
-    This class extends to the following classes
-    DeepQLearningAgent
-    HamiltonianCycleAgent
-    BreadthFirstSearchAgent
+class DeepQLearningAgent():
+    """This agent learns the game via Q learning
+    model outputs everywhere refers to Q values
+    This class can be extended to the following classes
+    PolicyGradientAgent
+    AdvantageActorCriticAgent
 
     Attributes
     ----------
     _board_size : int
         Size of board, keep greater than 6 for useful learning
         should be the same as the env board size
-    _n_frames : int
-        Total frames to keep in history when making prediction
-        should be the same as env board size
     _buffer_size : int
         Size of the buffer, how many examples to keep in memory
         should be large for DQN
@@ -171,23 +168,31 @@ class Agent():
         necessary to stabilise DQN learning
     _input_shape : tuple
         Tuple to store individual state shapes
-    _board_grid : Numpy array
-        A square filled with values from 0 to board size **2,
-        Useful when converting between row, col and int representation
     _version : str
         model version string
+    _model : TensorFlow Graph
+        Stores the graph of the DQN model
+    _s_input_format : str
+        input format in which player accepts board state 
+    _legal_moves_input_format : str
+        input format in which player accepts legal moves mask
+    _move_output_format : str
+        output format in which player returns the selected move
+    name : str
+        Name of the agent
+    epsilon: float, optional
+        Agent's exploration probability, necessary for DQN convergence
     """
+
     def __init__(self, board_size=8, buffer_size=10000,
                  gamma=0.99, n_actions=64, use_target_net=True,
-                 version=''):
-        """ initialize the agent
+                 epsilon=0.9, version=''):
+        """initialize the agent
 
         Parameters
         ----------
         board_size : int, optional
             The env board size, keep > 6
-        frames : int, optional
-            The env frame count to keep old frames in state
         buffer_size : int, optional
             Size of the buffer, keep large for DQN
         gamma : float, optional
@@ -196,6 +201,8 @@ class Agent():
             Count of actions available in env
         use_target_net : bool, optional
             Whether to use target network, necessary for DQN convergence
+        epsilon: float, optional
+            Agent's exploration probability, necessary for DQN convergence
         version : str, optional except NN based models
             path to the model architecture json
         """
@@ -215,6 +222,9 @@ class Agent():
         self._legal_moves_input_format = 'bitboard_single'
         # io for output (move)
         self._move_output_format = 'bitboard_single'
+        self.epsilon = epsilon
+        self.name = 'DQN'
+        self.reset_models()
 
     def get_state_input_format(self):
         """Return the input format for game state"""
@@ -227,7 +237,6 @@ class Agent():
     def get_move_output_format(self):
         """Return the output format for selected move"""
         return self._move_output_format
-
 
     def get_gamma(self):
         """Returns the agent's gamma value
@@ -323,35 +332,6 @@ class Agent():
             iteration = 0
         with open("{}/buffer_{:04d}".format(file_path, iteration), 'rb') as f:
             self._buffer = pickle.load(f)
-
-
-class DeepQLearningAgent(Agent):
-    """This agent learns the game via Q learning
-    model outputs everywhere refers to Q values
-    This class extends to the following classes
-    PolicyGradientAgent
-    AdvantageActorCriticAgent
-
-    Attributes
-    ----------
-    _model : TensorFlow Graph
-        Stores the graph of the DQN model
-    _target_net : TensorFlow Graph
-        Stores the target network graph of the DQN model
-    """
-    def __init__(self, board_size=8, buffer_size=10000,
-                 gamma=0.99, n_actions=64, use_target_net=True,
-                 version='', epsilon=0.9):
-        """Initializer for DQN agent, arguments are same as Agent class
-        except use_target_net is by default True and we call and additional
-        reset models method to initialize the DQN networks
-        """
-        Agent.__init__(self, board_size=board_size, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
-                 version=version)
-        self.name = 'DQN'
-        self.epsilon = epsilon
-        self.reset_models()
 
     def reset_models(self):
         """ Reset all the models by creating new graphs"""
@@ -457,10 +437,10 @@ class DeepQLearningAgent(Agent):
         model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
                 
         """
-        input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
+        input_board = Input((self._board_size, self._board_size, 3,), name='input')
         x = Conv2D(16, (3,3), activation='relu', data_format='channels_last')(input_board)
         x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(x)
-        x = Conv2D(64, (6,6), activation='relu', data_format='channels_last')(x)
+        x = Conv2D(64, (4,4), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
         x = Dense(64, activation = 'relu', name='action_prev_dense')(x)
         # this layer contains the final output values, activation is linear since
@@ -571,17 +551,17 @@ class DeepQLearningAgent(Agent):
 
         Parameters
         ----------
-        s: Numpy array of shape (batch_size, 3)
-        a: Numpy array of shape (batch_size, 1)
-        next_s: Numpy array of shape (batch_size, 3)
-        legal_moves: Nunpy array of shape (batch_size, 1)
+        s: Numpy array of shape (self._batch_size, 3)
+        a: Numpy array of shape (self._batch_size, 1)
+        next_s: Numpy array of shape (self._batch_size, 3)
+        legal_moves: Nunpy array of shape (self._batch_size, 1)
 
         Returns
         -------
-        s_board: Numpy array of shape (batch_size, board_size, board_size, 3)
-        a_board: Numpy array of shape (batch_size, n_actions)
-        next_s: Numpy array of shape (batch_size, board_size, board_size, 3)
-        legal_moves: Numpy array of shape (batch_size, n_actions)
+        s_board: Numpy array of shape (self._batch_size, self._board_size, self._board_size, 3)
+        a_board: Numpy array of shape (self._batch_size, self._n_actions)
+        next_s: Numpy array of shape (self._batch_size, self._board_size, self._board_size, 3)
+        legal_moves: Numpy array of shape (self._batch_size, self._n_actions)
 
         """
 
