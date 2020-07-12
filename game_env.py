@@ -1134,7 +1134,7 @@ class Game:
         return self._p
 
 
-    def play(self, record=False):
+    def play(self, add_to_buffer=False):
         """Play the game to the end
 
         Returns
@@ -1179,7 +1179,7 @@ class Game:
         self._hist[-1][-1] = winner
 
         # add game data to buffer agen buffers
-        if(record):
+        if(add_to_buffer):
             self.game_add_buffer()
 
         return winner
