@@ -1,4 +1,5 @@
-from game_env import StateEnv, Game, StateEnvBitBoard, StateConverter
+from game_env import (StateEnv, Game, StateEnvBitBoard, StateConverter, 
+                            StateEnvBitBoardC)
 from players import RandomPlayer
 import numpy as np
 import time
@@ -254,8 +255,8 @@ while(1):
 
 
 # check time taken to play 10000 games
-if(0):
-    total_games = 10000
+if(success):
+    total_games = 1000
     time_list = np.zeros(total_games)
     for i in tqdm(range(total_games)):
         start_time = time.time()
@@ -406,3 +407,18 @@ while(1):
         print('One or more test cases failed for board augmentation, correct code and try again !')
     # break from the while loop
     break
+
+# check time taken to play 10000 games with augmentation (8 * 10000)
+if(success):
+    total_games = 1000
+    total_reps = 8
+    time_list = np.zeros(total_games)
+    for i in tqdm(range(total_games)):
+        start_time = time.time()
+        g.reset()
+        winner = g.play()
+        _ = g.get_game_history(augmentations=True)
+        time_list[i] = time.time() - start_time
+    # print results
+    print('Total time taken to play {:d} games with {:d} augmentations : {:.5f}s'.format(total_games, total_reps, time_list.sum()))
+    print('Average time per game : {:.5f}s +- {:.5f}s'.format(np.mean(time_list)/total_reps, np.std(time_list)/total_reps))

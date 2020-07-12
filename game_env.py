@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Ellipse
 import shutil
 from tqdm import tqdm
+import ctypes
 
 def get_set_bits_list(x):
     """returns a list containing the positions of set bits
@@ -487,7 +488,7 @@ class StateEnvBitBoard:
         starter_b = 34628173824 # check binary arranged as 8x8 to see why
         starter_w = 68853694464 # check binary arranged as 8x8 to see why
         player = 1 # white to start
-        starter_board = [starter_b, starter_w, player]
+        starter_board = [starter_b, starter_w, player].copy()
         legal_moves = self._legal_moves_helper(starter_board)
         
         return [starter_board, legal_moves, player]
@@ -557,18 +558,41 @@ class StateEnvBitBoard:
         b : int
             count of black coins
         """
-        w, b = 0, 0
-        # count black coins
-        t = s[0]
-        while(t):
-            b += (t & 1)
-            t = t >> 1
-        # count white coins
-        t = s[1]
-        while(t):
-            w += (t & 1)
-            t = t >> 1
-        return b, w
+        return get_total_set_bits(s[0]), get_total_set_bits(s[1])
+
+    def get_player(self, s):
+        """return the current player to play
+
+        Parameters
+        ----------
+        s : tuple
+            contains the bitbaords and player
+
+        Returns
+        -------
+        p : int
+        """
+        return s[2]
+
+    def get_winner(self, s):
+        """Get the winner based on number of coins
+
+        Parameters
+        ----------
+        s : tuple
+            contains the bitboards representing the game state
+
+        Returns
+        -------
+        w : int
+            the winner, 1 if while, 0 if black and -1 if tie
+        """
+        b, w = self.count_coins(s)
+        if(b == w):
+            return -1
+        if(b > w):
+            return 0
+        return 1
 
     def get_num_actions(self):
         """Gets total count of actions in environment"""
@@ -843,6 +867,57 @@ class StateEnvBitBoard:
         else:
             return [board_notp, board_p, p]
 
+class StateEnvBitBoardC(StateEnvBitBoard):
+    """implementation of parts of StateEnvBitBoard with ctypes and C"""
+    def __init__(self, board_size=8):
+        StateEnvBitBoard.__init__(self, board_size=board_size)
+        # get the dll/so or shared library file
+        self._cfns = ctypes.CDLL('game_env_fn.dll')
+        """We skip the argument checking for a slight bump in speed
+        # assign arguments for the step function
+        # we use void function in C and pass the pointers to store
+        # the returned objects so that the data type is maintained by python
+        self._cfns.step.argtypes = \
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_uint,
+             ctypes.c_ulonglong, ctypes.POINTER(ctypes.c_ulonglong),
+             ctypes.POINTER(ctypes.c_ulonglong), 
+             ctypes.POINTER(ctypes.c_ulonglong),
+             ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint))
+        # to enforce returning a ulonglong, we will pass the result
+        # by reference
+        self._cfns.legal_moves_helper.argtypes = \
+            (ctypes.c_ulonglong, ctypes.c_ulonglong, ctypes.c_uint,
+             ctypes.POINTER(ctypes.c_ulonglong))
+        """
+
+    def reset(self):
+        starter_b = 34628173824 # check binary arranged as 8x8 to see why
+        starter_w = 68853694464 # check binary arranged as 8x8 to see why
+        player = 1 # white to start
+        starter_board = [starter_b, starter_w, player].copy()
+        # setup to call legal_moves_helper
+        m = ctypes.c_ulonglong()
+        self._cfns.legal_moves_helper(ctypes.c_ulonglong(starter_b), 
+                                      ctypes.c_ulonglong(starter_w), 
+                                      ctypes.c_uint(player), ctypes.byref(m))
+        return [starter_board, m.value, player]
+
+    def step(self, s, a):
+        ns0 = ctypes.c_ulonglong()
+        ns1 = ctypes.c_ulonglong()
+        np = ctypes.c_uint()
+        legal_moves = ctypes.c_ulonglong()
+        done = ctypes.c_uint()
+
+        self._cfns.step(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]),
+                        ctypes.c_uint(s[2]), ctypes.c_ulonglong(a),
+                        ctypes.byref(ns0), ctypes.byref(ns1),
+                        ctypes.byref(legal_moves), ctypes.byref(np),
+                        ctypes.byref(done))
+        return [ns0.value, ns1.value, np.value], \
+                    legal_moves.value, np.value, done.value
+
+
 class Game:
     """This class handles the complete lifecycle of a game,
     it keeping history of all the board state, keeps track of two players
@@ -882,7 +957,7 @@ class Game:
         self._p1 = player1
         self._p2 = player2
         self._size = board_size
-        self._env = StateEnvBitBoard(board_size=board_size)
+        self._env = StateEnvBitBoardC(board_size=board_size)
         self._converter = StateConverter()
         self._rewards = {'tie':0, 'win':1, 'loss':-1}
 
@@ -1048,6 +1123,17 @@ class Game:
         if(np.random.rand() < 0.5 and random_assignment):
             self._p = {0:self._p1, 1:self._p2}
 
+    def get_players_coin(self):
+        """return the dictionary telling which player is white/black
+
+        Returns
+        -------
+        p : dict
+            keys are 0,1; items are players
+        """
+        return self._p
+
+
     def play(self):
         """Play the game to the end
 
@@ -1059,6 +1145,7 @@ class Game:
         # get the starting state
 
         s, legal_moves, current_player = self._env.reset()
+        self.reset()
         done = 0
         while (not done):
             # get the action from current player
@@ -1087,14 +1174,7 @@ class Game:
             legal_moves = next_legal_moves
 
         # determine the winner
-        b, w = self._env.count_coins(s)
-        if(b > w):
-            winner = 0
-        elif(w > b):
-            winner = 1
-        else:
-            # tie
-            winner = -1
+        winner = self._env.get_winner(s)
 
         # modify the history object
         self._hist[-1][-1] = winner
@@ -1161,7 +1241,31 @@ class Game:
                      next_player, done, winner]
                 r.append(l)
 
-        return r 
+        return r
+
+    def get_game_history(self, augmentations=False):
+        """
+        Return the history of the current game played and
+        return history with transitions if necessary
+        
+        Parameters
+        ----------
+        augmentations : bool
+            whether to return history with augmentations
+
+        Returns
+        -------
+        transition_list : list of lists
+            a list containing all history transitions with/without augmentations
+        """
+        if(not augmentations):
+            return self._hist
+        else:
+            hist_len = len(self._hist)
+            transition_list = self._hist.copy()
+            for i in range(hist_len):
+                transition_list += self.create_board_reps(transition_list[i])
+            return transition_list
         
     def record_gameplay(self, path='file.mp4'):
         """Plays a game and saves the frames as individual pngs
@@ -1179,8 +1283,6 @@ class Game:
         frames_per_anim = len(transition_color_list) - 1
         color_array = np.zeros((self._size, self._size), np.uint8)
         alpha_array = np.zeros((self._size, self._size), np.uint8)
-        # reset the game
-        self.reset()
         # play a full game
         winner = self.play()
         # use the history object to save to game
@@ -1206,6 +1308,17 @@ class Game:
         # in the loop
         fig, axs = plt.subplots(1, 1, figsize=(8, 8), dpi=72)
         axs.axis('off')
+        title_line2 = 'white: ' + \
+            str(type(self._p[1])).replace('players.','').replace('<','').replace('>','') + \
+                      ' | black: ' + \
+          str(type(self._p[0])).replace('players.','').replace('<','').replace('>','')
+        if(winner == 1):
+            axs.set_title('winner:white\n' + title_line2)
+        elif(winner == 0):
+            axs.set_title('winner:black\n' + title_line2)
+        else:
+            axs.set_title('winner:tie\n' + title_line2)
+
         # add scatter points
         # axs.scatter([0, 1, 0, 1], [0, 1, 1, 0])
         ellipse_patch_list = []
@@ -1309,3 +1422,66 @@ class Game:
         os.system('ffmpeg -y -framerate {:d} -pattern_type sequence -i "{:s}/img_%05d.png" \
           -c:v libx264 -r {:d} -pix_fmt yuv420p -vf "crop=floor(iw/2)*2:floor(ih/2)*2" {:s}'\
           .format(int(1.5 * frames_per_anim), frames_dir, int(1.5 * frames_per_anim), path))
+
+
+def get_set_bits_list(x):
+    """returns a list containing the positions of set bits
+
+    Parameters
+    ----------
+    x : int
+        the int for which set bits from binary representation 
+        to return
+
+    Returns
+    -------
+    l : list
+        list with positions of set bits, the leftmost bit is position 0
+    """
+    idx = 0
+    """idx represents position from end
+    hence bitboard can be prepared by simply shifting 1
+    by the idx"""
+    l = []
+    while(x):
+        if(x & 1):
+            l.append(idx)
+        x = x >> 1
+        idx += 1
+    return l
+
+def get_total_set_bits(x):
+    """returns the total count of set bits in the integer
+    we use Brian Kernighan's method here
+
+    Parameters
+    ----------
+    x : int
+
+    Returns
+    -------
+    t : int
+        the total number of set bits in x
+    """
+    t = 0
+    while(x):
+        x = x & (x-1)
+        t += 1
+    return t
+
+def get_random_move_from_list(move_list):
+    """Select a random move from a move_list containing
+    positions of moves to select from
+
+    Parameters
+    ----------
+    move_list : list
+        list containing positions of moves
+
+    Returns
+    -------
+    m : int
+        position from right hand side where to play the coin
+    """
+    return move_list[np.random.randint(len(move_list))]
+
