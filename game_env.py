@@ -9,6 +9,44 @@ from matplotlib.patches import Rectangle, Ellipse
 import shutil
 from tqdm import tqdm
 
+def get_set_bits_list(x):
+    """returns a list containing the positions of set bits
+    Parameters
+    ----------
+    x : int
+        the int for which set bits from binary representation 
+        to return
+    Returns
+    -------
+    l : list
+        list with positions of set bits, the leftmost bit is position 0
+    """
+    idx = 0
+    """idx represents position from end
+    hence bitboard can be prepared by simply shifting 1
+    by the idx"""
+    l = []
+    while(x):
+        if(x & 1):
+            l.append(idx)
+        x = x >> 1
+        idx += 1
+    return l
+
+def get_random_move_from_list(move_list):
+    """Select a random move from a move_list containing
+    positions of moves to select from
+    Parameters
+    ----------
+    move_list : list
+        list containing positions of moves
+    Returns
+    -------
+    m : int
+        position from right hand side where to play the coin
+    """
+    return move_list[np.random.randint(len(move_list))]
+
 class StateEnv:
     """Base class that implements all the rules of the game
     and also provides the public functions that an agent can
@@ -399,6 +437,9 @@ class StateEnvBitBoard:
         # the maximum value
         self._max = 0xFFFFFFFFFFFFFFFF
 
+        # number of possible actions
+        self._n_actions = 64
+
         # define the masks for incorrect bit shifts
         # we can take direct & mask with these values instead
         # of doing & ~mask
@@ -528,6 +569,14 @@ class StateEnvBitBoard:
             w += (t & 1)
             t = t >> 1
         return b, w
+
+    def get_num_actions(self):
+        """Gets total count of actions in environment"""
+        return self._n_actions
+
+    def get_legal_moves(self, s):
+        """Get legal moves for the current board state"""
+        return self._legal_moves_helper(s)
 
     def _get_neighbors(self, s, e):
         """Return neighbors of all set bits of input
@@ -1008,6 +1057,7 @@ class Game:
             0 if black wins else 1
         """
         # get the starting state
+
         s, legal_moves, current_player = self._env.reset()
         done = 0
         while (not done):
@@ -1030,6 +1080,7 @@ class Game:
             # add to the historybject
             self._hist.append([s, legal_moves, current_player, a, \
                                next_s, next_legal_moves, next_player, done, -1])
+
             # setup for next iteration of loop
             s = next_s.copy()
             current_player = next_player
@@ -1048,7 +1099,32 @@ class Game:
         # modify the history object
         self._hist[-1][-1] = winner
 
+        # add game data to buffer agen buffers
+        self.game_add_buffer()
+
         return winner
+
+    def game_add_buffer(self):
+        """Add game history to players' buffers """
+
+        if [self._p[i].name for i in range(0, 2)] == ['Random', 'Random']:
+            print('Atleast one of the players must be non-random')
+
+        else:
+            for player in [0, 1]:
+                if self._p[player].name != 'Random':
+                    reward = [1 if self._hist[-1][-1] == player else 0\
+                              if self._hist[-1][-1] == -1 else -1][0]
+                    p_buffer = [item for item in self._hist if item[2] == player]
+                    np_r = np.zeros((len(p_buffer), 1))
+                    np_r[-1] = reward
+                    np_s = np.array([item[0] for item in p_buffer])
+                    np_a = np.array([item[3] for item in p_buffer]).reshape(-1, 1)
+                    np_next_s = np.append(np_s[1:], np.array([p_buffer[-1][4]]), axis=0)
+                    np_done = np.array([item[-2] for item in p_buffer]).reshape(-1, 1)
+                    np_legal = np.array([item[1] for item in p_buffer]).reshape(-1, 1)
+                    self._p[player].add_to_buffer(np_s, np_a, np_r, np_next_s, np_done, np_legal)
+                                   
 
     def create_board_reps(self, transition_list):
         """
