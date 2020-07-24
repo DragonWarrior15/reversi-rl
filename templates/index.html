@@ -1,0 +1,30 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>Othello-RL</title>
+    <!-- <meta name="description" content="The HTML5 Herald"> -->
+    <!-- <meta name="author" content="SitePoint"> -->
+
+    <!-- <link rel="stylesheet" href="css/styles.css?v=1.0"> -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+</head>
+
+<body>
+    <img src="static/gameplay_random_0.gif" alt="Othello the Game" width="400" height="400">
+    <br>
+    <div id="error_div" style="display:none">Please select a player first !</div>
+    <br>
+    <form id="game_start_form" method="post" action="/game_start">
+        <p>Please select the agent to play against:</p>
+        {% for k, v in players.items() %}
+            <input type="radio" id="random" name="opponentPlayer" value={{ k }}>
+            <label for={{ k }}>{{ v }}</label><br>
+        {% endfor %}
+        <br>
+        <button name="button" value="start">START GAME</button>
+    </form>
+</body>
+</html>

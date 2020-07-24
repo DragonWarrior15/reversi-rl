@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Othello-RL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/game_ui.css') }}">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="{{ url_for('static', filename='js/game_ui.js') }}"></script>
+</head>
+<body>
+    <h3 align="center">Othello Game against {{ opp_name }}</h3>
+    <div id="content">
+        <div id="othello_grid"></div>
+        <div id="right_grid">
+            <div id="coin_choice">
+                <h5>Choose your coin</h5>
+                <div onclick="coin_choice('white')">White</div>
+                <div onclick="coin_choice('black')">Black</div>
+                <div onclick="coin_choice('random')">Random</div>
+            </div>
+        </div>
+    </div>
+</body>

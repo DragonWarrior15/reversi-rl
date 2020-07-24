@@ -1114,14 +1114,22 @@ class Game:
         """
         return self._flip_vertical(self._flip_diag(x))
 
-    def reset(self, random_assignment=True):
-        """Randomly select who plays first"""
+    def reset(self, player1_coin=None):
+        """Randomly select who plays first
+
+        Parameters
+        ----------
+        player1_coin : int
+            if None, do a random assignment
+        """
         # prepare object to track history
         self._hist = []
-        # assign the first player
-        self._p = {1:self._p1, 0:self._p2}
-        if(np.random.rand() < 0.5 and random_assignment):
+        # random assignment
+        r = np.random.random()
+        if((player1_coin is None and r < 0.5) or player1_coin==0):
             self._p = {0:self._p1, 1:self._p2}
+        else:
+            self._p = {1:self._p1, 0:self._p2}
 
     def get_players_coin(self):
         """return the dictionary telling which player is white/black
