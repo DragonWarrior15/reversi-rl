@@ -854,9 +854,10 @@ class MCTSPlayer(Player):
 
 class MCTSPlayerC(Player):
     """This agent uses MCTS C implementation to decide which move to play"""
-    def __init__(self, board_size=8):
+    def __init__(self, board_size=8, n_sim=100):
         Player.__init__(self, board_size=board_size)
         self._env = ctypes.CDLL('mcts.dll')
+        self._n_sim = n_sim
 
     def move(self, s, legal_moves):
         """Select a move randomly, given the board state and the
@@ -877,5 +878,5 @@ class MCTSPlayerC(Player):
         # train mcts and get the move
         m = self._env.move(ctypes.c_ulonglong(s[0]), ctypes.c_ulonglong(s[1]), 
                     ctypes.c_uint(s[2]), ctypes.c_ulonglong(legal_moves), 
-                    ctypes.c_uint(100))
+                    ctypes.c_uint(self._n_sim))
         return 1 << m

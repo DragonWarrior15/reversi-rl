@@ -8,16 +8,17 @@
     <script src="{{ url_for('static', filename='js/game_ui.js') }}"></script>
 </head>
 <body>
-    <h3 align="center">Othello Game against {{ opp_name }}</h3>
+    <h1 id="page_title" align="center">Othello Game</h1>
     <div id="content">
         <div id="othello_grid"></div>
-        <div id="right_grid">
-            <div id="coin_choice">
-                <h5>Choose your coin</h5>
-                <div onclick="coin_choice('white')">White</div>
-                <div onclick="coin_choice('black')">Black</div>
-                <div onclick="coin_choice('random')">Random</div>
+        <div id="right_panel">
+            <div id="ai_choice">
+                <h2>Select the AI to play against</h2>
+                {% for k, v in players.items() %}
+                    <button class="ai_choice_btn" onclick="ai_choice('{{ k }}')">{{ v }}</button>
+                {% endfor %}
             </div>
+            </form>
         </div>
     </div>
 </body>
