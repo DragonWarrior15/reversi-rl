@@ -69,6 +69,14 @@
     margin-top: 10px;
 }
 
+#ai_slider{
+    -webkit-appearance: none;
+    /*width: 100%;*/
+    height: 10px;
+    outline: none;
+    background: #228B22;
+}
+
 #score_display_grid{
     display: grid;
     grid-template-columns: auto auto;

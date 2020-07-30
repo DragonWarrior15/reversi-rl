@@ -1,3 +1,4 @@
+# python game_server.py
 from flask import Flask, request, render_template, jsonify
 from players import RandomPlayer, MiniMaxPlayerC, MCTSPlayerC
 from game_env import StateEnvBitBoardC, get_set_bits_list, StateConverter
@@ -9,9 +10,9 @@ app = Flask(__name__)
 this is used to display the first page where user can select
 which ai to play against"""
 ai_players = {
-    'random': ['Random Player', RandomPlayer()],
-    'minimax': ['MiniMax Player (with alpha-beta pruning)', MiniMaxPlayerC(depth=8)],
-    'mcts': ['Monte Carlo Tree Search (MCTS)', MCTSPlayerC(n_sim=10000)]
+    'random': ['Random Player', RandomPlayer],
+    'minimax': ['MiniMax Player (with alpha-beta pruning)', MiniMaxPlayerC],
+    'mcts': ['Monte Carlo Tree Search (MCTS)', MCTSPlayerC]
 }
 
 # game flow related initializations, global variables
@@ -83,7 +84,17 @@ def ai_choice():
     """
     global ai_player
     c = request.form['ai_player']
+    d = request.form['difficulty']
+    # convert d to percentage with respect to 10
+    d = (int(d)-1)/(10-1.0)
     ai_player = ai_players[c][1]
+    # initialize with difficulty
+    if(c == 'minimax'):
+        ai_player = ai_player(depth=int(d*(9-1) + 1))
+    elif(c == 'mcts'):
+        ai_player = ai_player(n_sim=int(d*(50000-1) + 100))
+    else: # random
+        ai_player = ai_player()
     # read the html
     with open('templates/coin_choice_btn.html', 'r') as f:
         coin_choice_html = f.read()

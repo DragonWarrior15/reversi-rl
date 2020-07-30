@@ -17,7 +17,15 @@ $(document).ready(function(){
     }
     // set the html
     $('#othello_grid').html(x);
+
+    // set difficulty value
+    diff_val();
 });
+
+function diff_val(){
+    var x = $("#ai_slider").val();
+    $("#ai_slider_val").html("Select the AI difficulty level (Current " + x + "/10)");
+};
 
 async function ai_choice(c){
     /*c is the ai player to play against, refer to game_server.py
@@ -25,7 +33,7 @@ async function ai_choice(c){
     data from the ajax call*/
     // send the select ai name to the server
     data = await $.ajax({
-                data : {ai_player : c},
+                data : {ai_player : c, difficulty: $("#ai_slider").val()},
                 type : 'POST',
                 url : '/ai_choice'
             });
@@ -175,6 +183,11 @@ function set_color(c, l){
     */
     for (var i = 0; i < l.length; i++) {
         $("#othello_coin_" + l[i]).css("background-color", c);
+        if(c == legal_moves_color){
+            $("#othello_coin_" + l[i]).css("opacity", 0.6);
+        }else{
+            $("#othello_coin_" + l[i]).css("opacity", 1);
+        }
     }
 }
 

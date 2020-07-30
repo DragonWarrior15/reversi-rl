@@ -12,6 +12,10 @@
     <div id="content">
         <div id="othello_grid"></div>
         <div id="right_panel">
+            <div class="ai_difficulty">
+                <h2 id="ai_slider_val">Select the AI difficulty level (Current 5/10)</h2>
+                <input type="range" min="1" max="10" value="5" step="1" id="ai_slider" oninput="diff_val()">
+            </div>
             <div id="ai_choice">
                 <h2>Select the AI to play against</h2>
                 {% for k, v in players.items() %}
