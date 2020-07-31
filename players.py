@@ -2,7 +2,7 @@
 import numpy as np
 from game_env import (StateEnvBitBoard, get_set_bits_list,
                 get_total_set_bits, get_random_move_from_list,
-                StateEnvBitBoardC)
+                StateEnvBitBoardC, StateConverter)
 from mcts import MCTS
 import ctypes
 import time
@@ -10,14 +10,13 @@ import pickle
 from collections import deque
 import json
 from replay_buffer import ReplayBufferNumpy
-# import tensorflow as tf
-# from tensorflow.keras.regularizers import l2
-# from tensorflow.keras.optimizers import RMSprop, SGD, Adam
+import tensorflow as tf
+from tensorflow.keras.optimizers import RMSprop, SGD, Adam
 # from keras.losses import Loss
-# import tensorflow.keras.backend as K
-# from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax, MaxPool2D
-# from tensorflow.keras import Model
-# from tensorflow.keras.regularizers import l2
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax
+from tensorflow.keras import Model
+from tensorflow.keras.regularizers import l2
 
 def huber_loss(y_true, y_pred, delta=1):
     """Keras implementation for huber loss
@@ -178,7 +177,7 @@ class DeepQLearningAgent():
 
     def __init__(self, board_size=8, buffer_size=10000,
                  gamma=0.99, n_actions=64, use_target_net=True,
-                 epsilon=0.9, version=''):
+                 epsilon=0.9, version='', name='DQN'):
         """initialize the agent
 
         Parameters
@@ -215,7 +214,7 @@ class DeepQLearningAgent():
         # io for output (move)
         self._move_output_format = 'bitboard_single'
         self.epsilon = epsilon
-        self.name = 'DQN'
+        self.name = name
         self.reset_models()
 
     def get_state_input_format(self):
@@ -347,6 +346,7 @@ class DeepQLearningAgent():
         """
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
+        board = board.astype(np.float32)
         return board.copy()
 
     def _get_model_outputs(self, board, model=None):
@@ -651,10 +651,10 @@ class DeepQLearningAgent():
         """Update weights between competing agents which can be used
         in parallel training
         """
-        assert isinstance(agent_for_copy, self), "Agent type is required for copy"
+        assert isinstance(agent_for_copy, type(self)), "Agent type is required for copy"
 
         self._model.set_weights(agent_for_copy._model.get_weights())
-        self._target_net.set_weights(agent_for_copy._model_pred.get_weights())
+        self.update_target_net()
 
 class MiniMaxPlayer(Player):
     """This agent uses the minimiax algorithm to decide which move to play
@@ -826,7 +826,6 @@ class MiniMaxPlayerC(MiniMaxPlayer):
               ctypes.c_uint(s[2]))
         return 1 << m
 
-
 class MCTSPlayer(Player):
     """This agent uses MCTS to decide which move to play"""
 
@@ -850,7 +849,6 @@ class MCTSPlayer(Player):
         mcts = MCTS(s, legal_moves, board_size=self._size)
         mcts.train()
         return mcts.select_move()
-
 
 class MCTSPlayerC(Player):
     """This agent uses MCTS C implementation to decide which move to play"""
