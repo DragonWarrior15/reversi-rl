@@ -56,7 +56,7 @@ if (1):
     for i in tqdm(range(n_games_buffer)):
         start_time = time.time()
         g.reset()
-        winner = g.play()
+        winner = g.play(add_to_buffer=True)
         if winner != -1:
             win_list_random.append(g._p[winner].name)
         else:
@@ -74,7 +74,7 @@ if (1):
     for i in tqdm(range(episodes)):
     
         g.reset()
-        _ = g.play()
+        _ = g.play(add_to_buffer=True)
     
     #     play a few games and fill the buffer with new data before training
         if i % n_games_train == 0:

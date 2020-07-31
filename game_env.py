@@ -1199,18 +1199,19 @@ class Game:
 
         else:
             for player in [0, 1]:
-                reward = self._rewards['win'] if self._hist[-1][-1] == player \
-                            else self._rewards['tie'] \
-                            if self._hist[-1][-1] == -1 else self._rewards['loss']
-                p_buffer = [item for item in self._hist if item[2] == player]
-                np_r = np.zeros((len(p_buffer), 1))
-                np_r[-1] = reward
-                np_s = np.array([item[0] for item in p_buffer])
-                np_a = np.array([item[3] for item in p_buffer]).reshape(-1, 1)
-                np_next_s = np.append(np_s[1:], np.zeros((1,3)), axis=0)
-                np_done = np.array([item[-2] for item in p_buffer]).reshape(-1, 1)
-                np_legal = np.array([item[1] for item in p_buffer]).reshape(-1, 1)
-                self._p[player].add_to_buffer(np_s, np_a, np_r, np_next_s, np_done, np_legal)
+                if(callable(getattr(self._p[player], 'add_to_buffer', None))):
+                    reward = self._rewards['win'] if self._hist[-1][-1] == player \
+                                else self._rewards['tie'] \
+                                if self._hist[-1][-1] == -1 else self._rewards['loss']
+                    p_buffer = [item for item in self._hist if item[2] == player]
+                    np_r = np.zeros((len(p_buffer), 1))
+                    np_r[-1] = reward
+                    np_s = np.array([item[0] for item in p_buffer])
+                    np_a = np.array([item[3] for item in p_buffer]).reshape(-1, 1)
+                    np_next_s = np.append(np_s[1:], np.zeros((1,3)), axis=0)
+                    np_done = np.array([item[-2] for item in p_buffer]).reshape(-1, 1)
+                    np_legal = np.array([item[1] for item in p_buffer]).reshape(-1, 1)
+                    self._p[player].add_to_buffer(np_s, np_a, np_r, np_next_s, np_done, np_legal)
                                    
 
     def create_board_reps(self, transition_list):
