@@ -22,7 +22,7 @@ class ReplayBufferNumpy:
         buffer size * 1
     _r : Numpy array
         Buffer to store the rewards, buffer size * 1
-    _legal_moves : Numpy array
+    _next_legal_moves : Numpy array
         Buffer to store the legal moves in the next state, useful
         when calculating the max of Q values in next state
     _buffer_size : int
@@ -57,9 +57,9 @@ class ReplayBufferNumpy:
         self._s = np.zeros((buffer_size, 3), dtype=np.uint64)
         self._next_s = self._s.copy()
         self._a = np.zeros((buffer_size, 1), dtype=np.uint64)
-        self._done = self._a.copy()
-        self._r = np.zeros((buffer_size, 1), dtype=np.int16)
-        self._legal_moves = np.zeros((buffer_size, 1), dtype=np.uint64)
+        self._done = self._a.copy().astype(np.uint8)
+        self._r = np.zeros((buffer_size, 1), dtype=np.float32)
+        self._next_legal_moves = self._a.copy()
 
     def add_to_buffer(self, s, a, r, next_s, done, legal_moves):
         """Add data to the buffer, multiple examples can be added at once
@@ -89,11 +89,15 @@ class ReplayBufferNumpy:
         self._r[idx] = r
         self._next_s[idx] = next_s
         self._done[idx] = done
-        self._legal_moves[idx] = legal_moves
+        self._next_legal_moves[idx] = legal_moves
         # % is to wrap over the buffer
         self._pos = (self._pos+l)%self._buffer_size
         # update the buffer size
-        self._current_buffer_size = max(self._current_buffer_size, self._pos+1)
+        # self._current_buffer_size = max(self._current_buffer_size, self._pos+1)
+        if(self._pos + 1 > self._current_buffer_size):
+            self._current_buffer_size = self._pos + 1
+        else:
+            self._current_buffer_size = self._buffer_size
 
     def get_current_size(self):
         """Returns current buffer size, not to be confused with
@@ -146,6 +150,6 @@ class ReplayBufferNumpy:
         r = self._r[idx].reshape((-1, 1))
         next_s = self._next_s[idx]
         done = self._done[idx].reshape(-1, 1)
-        legal_moves = self._legal_moves[idx]
+        next_legal_moves = self._next_legal_moves[idx]
 
-        return s, a, r, next_s, done, legal_moves
+        return s, a, r, next_s, done, next_legal_moves

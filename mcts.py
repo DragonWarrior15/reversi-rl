@@ -228,6 +228,9 @@ class MCTS:
                     self._node_list[c].N = node.n
                 if(winner != -1):
                     node.w += (1-winner == self._env.get_player(node.state))
+                else:
+                    # tie
+                    node.w += 0.5
                 # move one level up
                 if(node.parent is None):
                     break

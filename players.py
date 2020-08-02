@@ -12,7 +12,6 @@ import json
 from replay_buffer import ReplayBufferNumpy
 import tensorflow as tf
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
-# from keras.losses import Loss
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax
 from tensorflow.keras import Model
@@ -263,7 +262,8 @@ class DeepQLearningAgent():
         """
         return self._buffer.get_current_size()
 
-    def add_to_buffer(self, board, action, reward, next_board, done, legal_moves):
+    def add_to_buffer(self, board, action, reward, next_board, 
+                      done, next_legal_moves):
         """Add current game step to the replay buffer
 
         Parameters
@@ -278,11 +278,11 @@ class DeepQLearningAgent():
             State obtained after executing action on current state
         done : Numpy array or int
             Binary indicator for game termination
-        legal_moves : Numpy array
+        next_legal_moves : Numpy array
             Binary indicators for actions which are allowed at next states
         """
         self._buffer.add_to_buffer(board, action, reward, next_board, 
-                                   done, legal_moves)
+                                   done, next_legal_moves)
 
     def save_buffer(self, file_path='', iteration=None):
         """Save the buffer to disk
@@ -389,12 +389,13 @@ class DeepQLearningAgent():
             Selected action using the argmax function
         """
         # use the agent model to make the predictions
-        if np.random.random()  > self.epsilon:
+        if np.random.random() > self.epsilon and legal_moves:
             model_outputs = self._get_model_outputs(board, self._model)[0]
-            legal_moves = self._converter.convert(legal_moves, input_format='bitboard_single',\
-                                                  output_format='ndarray')\
-                              .reshape((1, -1))[0]
-            return 1 << int((63 - np.argmax(np.where(legal_moves==1, model_outputs, -np.inf))))
+            legal_moves = self._converter.convert(legal_moves, 
+                      input_format='bitboard_single', output_format='ndarray')\
+                        .reshape((1,-1))[0]
+            return 1 << int((63 - np.argmax(np.where(legal_moves==1, 
+                                         model_outputs, -np.inf))))
 
         else:
             if(not legal_moves):
@@ -426,7 +427,7 @@ class DeepQLearningAgent():
                 x = Dense(**l)(x)
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
         model = Model(inputs=input_board, outputs=out)
-        model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
+        model.compile(optimizer=Adam(0.0005), loss='mean_squared_error')
                 
         """
         input_board = Input((self._board_size, self._board_size, 3,), name='input')
@@ -537,45 +538,47 @@ class DeepQLearningAgent():
             print('Target Network')
             print(self._target_net.summary())
 
-    def convert_bitboards(self, s, a, next_s, legal_moves):
-        """ Converts states, rewards, actions, next states and legal moves sample
-        from agent's buffer into numpy arrays of desired shape for training the model
+    def convert_bitboards(self, s, a, next_s, next_legal_moves):
+        """ Converts states, rewards, actions, next states and legal 
+        moves sampled from agent's buffer into numpy arrays of desired 
+        shape for training the model
 
         Parameters
         ----------
-        s: Numpy array of shape (self._batch_size, 3)
-        a: Numpy array of shape (self._batch_size, 1)
-        next_s: Numpy array of shape (self._batch_size, 3)
-        legal_moves: Nunpy array of shape (self._batch_size, 1)
+        s: ndarray of shape (self._batch_size, 3)
+        a: ndarray of shape (self._batch_size, 1)
+        next_s: ndarray of shape (self._batch_size, 3)
+        next_legal_moves: Nunpy array of shape (self._batch_size, 1)
 
         Returns
         -------
-        s_board: Numpy array of shape (self._batch_size, self._board_size, self._board_size, 3)
-        a_board: Numpy array of shape (self._batch_size, self._n_actions)
-        next_s: Numpy array of shape (self._batch_size, self._board_size, self._board_size, 3)
-        legal_moves: Numpy array of shape (self._batch_size, self._n_actions)
+        s_board: ndarray of shape (self._batch_size, self._board_size, self._board_size, 3)
+        a_board: ndarray of shape (self._batch_size, self._n_actions)
+        next_s: ndarray of shape (self._batch_size, self._board_size, self._board_size, 3)
+        next_legal_moves: ndarray of shape (self._batch_size, self._n_actions)
 
         """
-
-        s_board = np.zeros((len(s), self._board_size, self._board_size, 3), dtype='uint8')
+        n = s.shape[0]
+        s_board = np.zeros((n, self._board_size, self._board_size, 3), 
+                           dtype='uint8')
         next_s_board = s_board.copy()
-        a_board = np.zeros((len(s), self._n_actions), dtype='uint8')
-        legal_moves_board = a_board.copy()
-        for i in range(len(s)):
+        a_board = np.zeros((n, self._n_actions), dtype='uint8')
+        next_legal_moves_board = a_board.copy()
+        for i in range(n):
             s_board[i] = self._converter.convert([int(item) for item in list(s[i])],\
-                                                 input_format='bitboard',\
-                                                 output_format='ndarray3d')
+                                         input_format='bitboard',\
+                                         output_format='ndarray3d')
             next_s_board[i] = self._converter.convert([int(item) for item in list(next_s[i])],\
-                                                      input_format='bitboard',\
-                                                      output_format='ndarray3d')
+                                          input_format='bitboard',\
+                                          output_format='ndarray3d')
             a_board[i] = self._converter.convert(int(a[i][0]),\
-                                                 input_format='bitboard_single',\
-                                                 output_format='ndarray').reshape(-1, self._n_actions)
-            legal_moves_board[i] = self._converter.convert(int(legal_moves[i][0]),\
-                                                           input_format='bitboard_single',\
-                                                           output_format='ndarray').reshape(-1, self._n_actions)
+                                 input_format='bitboard_single',\
+                                 output_format='ndarray').reshape(-1, self._n_actions)
+            next_legal_moves_board[i] = self._converter.convert(int(next_legal_moves[i][0]),\
+                               input_format='bitboard_single',\
+                               output_format='ndarray').reshape(-1, self._n_actions)
 
-        return s_board, a_board, next_s_board, legal_moves_board
+        return s_board, a_board, next_s_board, next_legal_moves_board
 
 
     def train_agent(self, batch_size=32, num_games=1, reward_clip=False):
@@ -607,25 +610,33 @@ class DeepQLearningAgent():
             loss : float
             The current error (error metric is defined in reset_models)
         """
-        s, a, r, next_s, done, legal_moves = self._buffer.sample(batch_size)
+        s, a, r, next_s, done, next_legal_moves = \
+                                    self._buffer.sample(batch_size)
         # converting states, actions and moves from bitboards to numpy arrays
-        s_board, a_board, next_s_board, legal_moves_board = self.convert_bitboards(s, a, next_s, legal_moves)
+        s, a, next_s, next_legal_moves = \
+                        self.convert_bitboards(s, a, next_s, next_legal_moves)
         if(reward_clip):
             r = np.sign(r)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
-        next_model_outputs = self._get_model_outputs(next_s_board, current_model)
+        next_model_outputs = self._get_model_outputs(next_s, current_model)
         # our estimate of expexted future discounted reward
-        discounted_reward = r + \
-                 (self._gamma * np.max(np.where(legal_moves_board == 1, next_model_outputs, -np.inf), 
-                                  axis = 1)\
-                                  .reshape(-1, 1)) * (1-done)
-                # create the target variable, only the column with action has different value
-        target = self._get_model_outputs(s_board)
-        # we bother only with the difference in reward estimate at the selected action
-        target = (1-a_board)*target + a_board*discounted_reward
+        discounted_reward = np.max(np.where(next_legal_moves == 1, 
+                    next_model_outputs, -np.inf), axis = 1).reshape(-1,1)
+        # replace nans/inf with 0
+        discounted_reward[~np.isfinite(discounted_reward)] = 0
+        # we discard this value in case this is terminal state
+        discounted_reward = discounted_reward * (1-done)
+        # add the current step reward
+        discounted_reward = r + discounted_reward
+        # create the target variable, only the column with 
+        # action has different value
+        target = self._get_model_outputs(s)
+        # we bother only with the difference in reward estimate at the 
+        # selected action
+        target = (1-a)*target + a*discounted_reward
         # fit
-        loss = self._model.train_on_batch(s_board, target)
+        loss = self._model.train_on_batch(s, target)
         # loss = round(loss, 5)
         return loss
 
@@ -655,6 +666,11 @@ class DeepQLearningAgent():
 
         self._model.set_weights(agent_for_copy._model.get_weights())
         self.update_target_net()
+
+    def copy_buffer_from_agent(self, agent_for_copy):
+        """Update buffer for parallel training"""
+        assert isinstance(agent_for_copy, type(self)), "Agent type is required for copy"
+        self._buffer = agent_for_copy._buffer.copy()
 
 class MiniMaxPlayer(Player):
     """This agent uses the minimiax algorithm to decide which move to play

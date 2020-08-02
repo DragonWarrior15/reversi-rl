@@ -9,6 +9,7 @@ from matplotlib.patches import Rectangle, Ellipse
 import shutil
 from tqdm import tqdm
 import ctypes
+from itertools import chain
 
 def get_set_bits_list(x):
     """returns a list containing the positions of set bits
@@ -346,6 +347,10 @@ class StateConverter:
                         board[i, j, coin] = t & 1
                         # shift bits
                         t = t >> 1
+                        if(not t):
+                            break
+                    if(not t):
+                        break
             # set the player
             board[:, :, 2] = s[2]
         elif(input_format == 'ndarray3d'):
@@ -358,6 +363,10 @@ class StateConverter:
                 for j in range(self._size-1, -1, -1):
                     board[i, j, 0] = s & 1
                     s = s >> 1
+                    if(not s):
+                        break
+                if(not s):
+                    break
         elif(input_format == 'ndarray'):
             # single board is input, example action mask, legal moves
             board[:, :, 0] = s
@@ -531,7 +540,7 @@ class StateEnvBitBoard:
                 done = 1
             else:
                 # current player cannot play, switch player
-                s_next[2] = 0 if(s_next[2]) else 1
+                s_next[2] = 1 - s_next[2]
                 # check for legal moves again
                 legal_moves = self._legal_moves_helper(s_next)
                 if(legal_moves == 0):
@@ -937,7 +946,9 @@ class Game:
     _hist : list
         stores all the state transitions
         [current board, current legal moves, current player, action,
-         done, reward]
+         done, reward, next board state]
+    _hist_dict: dict
+        mapping for index of stored object in _hist
     """
     def __init__(self, player1, player2, board_size=8):
         """Initialize the game with the two specified players
@@ -958,7 +969,10 @@ class Game:
         self._size = board_size
         self._env = StateEnvBitBoardC(board_size=board_size)
         self._converter = StateConverter()
-        self._rewards = {'tie':5, 'win':10, 'loss':-10}
+        self._rewards = {'tie':0.5, 'win':1, 'loss':-1}
+        self._hist_dict = {'s':0, 'legal_moves':1, 'player':2,
+                            'action':3, 'done':4, 'winner':5, 'next_s':6,
+                            'next_legal_moves':7, 'next_player':8}
 
     def _flip_vertical(self, x):
         """
@@ -1141,7 +1155,7 @@ class Game:
         return self._p
 
 
-    def play(self, add_to_buffer=False):
+    def play(self, add_to_buffer=False, add_augmentations=False):
         """Play the game to the end
 
         Returns
@@ -1172,7 +1186,8 @@ class Game:
             next_s, next_legal_moves, next_player, done = \
                             self._env.step(s, a)
             # add to the historybject
-            self._hist.append([s, legal_moves, current_player, a, done, -1])
+            self._hist.append([s, legal_moves, current_player, a, 
+                              done, -1, next_s, next_legal_moves, next_player])
 
             # setup for next iteration of loop
             s = next_s.copy()
@@ -1183,35 +1198,51 @@ class Game:
         winner = self._env.get_winner(s)
 
         # modify the history object
-        self._hist[-1][-1] = winner
+        self._hist[-1][self._hist_dict['winner']] = winner
 
         # add game data to buffer agen buffers
         if(add_to_buffer):
-            self.game_add_buffer()
+            self.game_add_buffer(add_augmentations)
 
         return winner
 
-    def game_add_buffer(self):
+    def game_add_buffer(self, add_augmentations=False):
         """Add game history to players' buffers """
-
-        if [self._p[i].name for i in range(0, 2)] == ['Random', 'Random']:
-            print('Atleast one of the players must be non-random')
-
-        else:
-            for player in [0, 1]:
-                if(callable(getattr(self._p[player], 'add_to_buffer', None))):
-                    reward = self._rewards['win'] if self._hist[-1][-1] == player \
-                                else self._rewards['tie'] \
-                                if self._hist[-1][-1] == -1 else self._rewards['loss']
-                    p_buffer = [item for item in self._hist if item[2] == player]
-                    np_r = np.zeros((len(p_buffer), 1))
-                    np_r[-1] = reward
-                    np_s = np.array([item[0] for item in p_buffer])
-                    np_a = np.array([item[3] for item in p_buffer]).reshape(-1, 1)
-                    np_next_s = np.append(np_s[1:], np.zeros((1,3)), axis=0)
-                    np_done = np.array([item[-2] for item in p_buffer]).reshape(-1, 1)
-                    np_legal = np.array([item[1] for item in p_buffer]).reshape(-1, 1)
-                    self._p[player].add_to_buffer(np_s, np_a, np_r, np_next_s, np_done, np_legal)
+        for player in [0, 1]:
+            if(callable(getattr(self._p[player], 'add_to_buffer', None))):
+                if(self._hist[-1][self._hist_dict['winner']] == -1):
+                    reward = self._rewards['tie']
+                elif(self._hist[-1][self._hist_dict['winner']] == player):
+                    reward = self._rewards['win']
+                else:
+                    reward = self._rewards['loss']
+                # work with augmentations if needed
+                if(add_augmentations):
+                    hist_ = self.create_history_augmentations(self._hist)
+                else:
+                    hist_ = [self._hist]
+                for hist_obj in hist_:
+                    # get the items relevant to player
+                    p_buffer = [item for item in hist_obj \
+                                if item[self._hist_dict['player']] == player]
+                    # prepare np arrays
+                    r = np.zeros((len(p_buffer), 1), dtype=np.float32)
+                    r[-1] = reward
+                    s = np.array([item[self._hist_dict['s']] \
+                                    for item in p_buffer], dtype=np.uint64)
+                    a = np.array([item[self._hist_dict['action']] \
+                            for item in p_buffer], dtype=np.uint64).reshape(-1, 1)
+                    next_s = np.zeros(s.shape, dtype=np.uint64)
+                    next_s[1:,:] = s[:-1, :]
+                    # done = np.array([item[self._hist_dict['done']] \
+                                       # for item in p_buffer]).reshape(-1, 1)
+                    # make last entry as done = 1
+                    done = np.zeros(r.shape, dtype=np.uint8)
+                    done[-1] = 1
+                    next_legal = np.array([item[self._hist_dict['next_legal_moves']] \
+                                for item in p_buffer], dtype=np.uint64).reshape(-1, 1)
+                    self._p[player].add_to_buffer(s, a, r, next_s, \
+                                                  done, next_legal)
                                    
 
     def create_board_reps(self, transition_list):
@@ -1227,7 +1258,7 @@ class Game:
         Parameters:
         ----------
         transition list - list containing s, legal_moves, current_player, a, 
-                            done, winner
+                            done, winner, next_s, next_legal_moves, next_player
 
         Returns:
         -------
@@ -1235,19 +1266,53 @@ class Game:
 
         """
         s, legal_moves, current_player, a,\
-                        done, winner = transition_list
+            done, winner, next_s, next_legal_moves, next_player = transition_list
         
         r = []
         
         for fn_1 in [lambda x: x, self._flip_vertical]:
             # lambda function is for representing normal board state
             for fn_2 in [lambda x: x, self._rot_clock_90, self._rot_180, self._rot_anticlock_90]:
-                l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], fn_2(fn_1(legal_moves)),
-                     current_player, fn_2(fn_1(a)),
-                     done, winner]
-                r.append(l)
+                l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], 
+                        fn_2(fn_1(legal_moves)),
+                        current_player, fn_2(fn_1(a)),
+                        done, winner, 
+                     [fn_2(fn_1(next_s[0])), fn_2(fn_1(next_s[1])), next_s[2]],
+                     fn_2(fn_1(next_legal_moves)), next_player]
+                yield l
+        # return modified list
+        # return r
 
-        return r
+    def create_history_augmentations(self, hist_):
+        """Create an augmented version of the game history, this function
+        returns the original history as well
+        
+        Parameters
+        ----------
+        hist_ : list of lists
+            a list containing the state variables of an entire game
+
+        Yields
+        ------
+        hist_aug : list of lists
+            one augmentated version of the entire game history
+        """
+        for fn_1 in [lambda x: x, self._flip_vertical]:
+            for fn_2 in [lambda x: x, self._rot_clock_90, self._rot_180,\
+                                    self._rot_anticlock_90]:
+                hist_aug = []
+                for it in hist_:
+                    s, legal_moves, current_player, a, done, winner,\
+                        next_s, next_legal_moves, next_player = it
+                    l = [[fn_2(fn_1(s[0])), fn_2(fn_1(s[1])), s[2]], 
+                            fn_2(fn_1(legal_moves)),
+                            current_player, fn_2(fn_1(a)),
+                            done, winner, 
+                         [fn_2(fn_1(next_s[0])), fn_2(fn_1(next_s[1])), next_s[2]],
+                         fn_2(fn_1(next_legal_moves)), next_player]
+                    hist_aug.append(l.copy())
+                # modified hist
+                yield hist_aug
 
     def get_game_history(self, augmentations=False):
         """
@@ -1383,12 +1448,13 @@ class Game:
             # clear figure
             # plt.cla()
             # get the board from history
-            s = self._converter.convert(self._hist[idx][0],
+            s = self._converter.convert(self._hist[idx][self._hist_dict['s']],
                                     input_format='bitboard',
                                     output_format='ndarray3d')
-            next_s = self._converter.convert(self._hist[idx][4],
-                                    input_format='bitboard',
-                                    output_format='ndarray3d')
+            next_s = self._converter.convert(
+                                 self._hist[idx][self._hist_dict['next_s']],
+                                input_format='bitboard',
+                                output_format='ndarray3d')
             # prepare a single frame
             for t in range(frames_per_anim):
                 # determine the color and alpha values
@@ -1418,7 +1484,8 @@ class Game:
                 fig_file_idx += 1
             # add some persistence before placing another new coin
             fig_file_copy_idx = fig_file_idx - 1
-            for _ in range(frames_per_anim//2):
+            for _ in range(frames_per_anim if idx== len(self._hist)-1\
+                            else frames_per_anim//2):
                 shutil.copyfile('{:s}/img_{:05d}.png'.format(frames_dir, fig_file_copy_idx),
                 '{:s}/img_{:05d}.png'.format(frames_dir, fig_file_idx))
                 fig_file_idx += 1
